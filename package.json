@@ -10,12 +10,16 @@
   },
   "packageManager": "pnpm@10.31.0",
   "scripts": {
+    "start": "tsx src/index.ts",
+    "smoke": "tsx scripts/mcp-smoke.ts",
     "pay-newsep": "tsx scripts/pay-newsep.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^16.4.5",
-    "viem": "^2.21.0"
+    "viem": "^2.21.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
