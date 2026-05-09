@@ -1,0 +1,27 @@
+# deps
+node_modules/
+
+# build artifacts
+dist/
+*.tsbuildinfo
+
+# env / secrets — never commit a private key
+.env
+.env.local
+*.key
+*.pem
+
+# local data (receipts SQLite, etc.)
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# editor / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# claude code per-project state
+.claude/
