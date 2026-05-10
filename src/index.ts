@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * thebuyside-agent — MCP gateway for x402-priced APIs.
+ * thebuyside-x402-agent — MCP gateway for x402-priced APIs.
  * Entry point. See src/server.ts for the actual server.
  */
 

@@ -27,7 +27,7 @@ X402_PER_CALL_LIMIT=50000     # atomic units (6 decimals)
 
 ## Daily cap (sliding 24h window)
 
-Sums the `amount_atomic` values from `~/thebuyside-agent/.local/receipts.jsonl` for the last 24 hours. If the new payment would push the total over the cap, the gateway refuses with a clear error citing the running total.
+Sums the `amount_atomic` values from `<project>/.local/receipts.jsonl` for the last 24 hours. If the new payment would push the total over the cap, the gateway refuses with a clear error citing the running total.
 
 ```bash
 X402_DAILY_LIMIT=1.00          # decimal USDC
@@ -59,7 +59,7 @@ This disables the host allowlist check entirely. **Don't ship this in production
 
 ## Receipts log
 
-Every settled payment appends a line to `~/thebuyside-agent/.local/receipts.jsonl`:
+Every settled payment appends a line to `<project>/.local/receipts.jsonl`:
 
 ```json
 {"id":"...","ts":"2026-05-10T02:10:14.123Z","host":"news-ep.com","url":"https://news-ep.com/api/v1/stories?...","method":"GET","amount_atomic":"5000","asset":"USDC","chain":"base","tx_hash":"0xd091..."}
@@ -68,7 +68,7 @@ Every settled payment appends a line to `~/thebuyside-agent/.local/receipts.json
 The daily cap reads this file. To override the path (e.g. for shared logs across hosts):
 
 ```bash
-X402_RECEIPTS_PATH=/var/log/thebuyside-agent/receipts.jsonl
+X402_RECEIPTS_PATH=/var/log/thebuyside-x402-agent/receipts.jsonl
 ```
 
 ## Self-transfer guard

@@ -1,6 +1,6 @@
 {
-  "name": "thebuyside-agent",
-  "version": "0.1.0",
+  "name": "thebuyside-x402-agent",
+  "version": "0.2.0",
   "description": "Buyer-side x402 MCP gateway — let any agent pay any x402 API without seeing a 402 or a wallet.",
   "license": "Apache-2.0",
   "author": "Joshua Harrington",
@@ -8,7 +8,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "thebuyside-agent": "dist/index.js"
+    "thebuyside-x402-agent": "dist/index.js"
   },
   "files": [
     "dist",
@@ -29,11 +29,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaysperspective/thebuyside-agent.git"
+    "url": "git+https://github.com/jaysperspective/thebuyside-x402-agent.git"
   },
-  "homepage": "https://github.com/jaysperspective/thebuyside-agent#readme",
+  "homepage": "https://github.com/jaysperspective/thebuyside-x402-agent#readme",
   "bugs": {
-    "url": "https://github.com/jaysperspective/thebuyside-agent/issues"
+    "url": "https://github.com/jaysperspective/thebuyside-x402-agent/issues"
   },
   "engines": {
     "node": ">=20"

@@ -27,7 +27,7 @@ export async function startServer(): Promise<void> {
   const version = await loadPackageVersion();
 
   const server = new McpServer({
-    name: 'thebuyside-agent',
+    name: 'thebuyside-x402-agent',
     version,
   });
 
@@ -38,7 +38,7 @@ export async function startServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  logger.info('thebuyside-agent MCP server ready', {
+  logger.info('thebuyside-x402-agent MCP server ready', {
     walletConfigured: gateway.signer !== null,
     walletAddress: gateway.signer?.address ?? null,
     chains: gateway.chains.map((c) => c.id),

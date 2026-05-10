@@ -1,8 +1,8 @@
-# thebuyside-agent
+# thebuyside-x402-agent
 
 The MCP gateway that lets any AI agent discover and pay x402-priced APIs — without the user wiring payments themselves.
 
-`thebuyside-agent` is the canonical buyer-side reference implementation for [x402](https://x402.org), the HTTP 402 payment standard stewarded by the Linux Foundation. Drop it into Claude Code, Claude Desktop, Cursor, or any MCP client, and your agent gains three tools:
+`thebuyside-x402-agent` is the canonical buyer-side reference implementation for [x402](https://x402.org), the HTTP 402 payment standard stewarded by the Linux Foundation. Drop it into Claude Code, Claude Desktop, Cursor, or any MCP client, and your agent gains three tools:
 
 - **`x402.discover`** — search a curated registry of x402-priced APIs
 - **`x402.fetch`** — call one (the gateway pays the 402 challenge automatically)
@@ -38,7 +38,7 @@ Use a fresh wallet, not your main one. (You can also pass this via your MCP clie
 **Claude Code (CLI):**
 
 ```bash
-claude mcp add x402-pay -- npx -y thebuyside-agent
+claude mcp add x402-pay -- npx -y thebuyside-x402-agent
 ```
 
 Open a session, type `/mcp` to verify, then ask: *"Use x402.wallet_status to show my wallet."*
@@ -108,8 +108,8 @@ The gateway holds the wallet, drives the 402 → sign → 200 loop, enforces spe
 For contributors and anyone who wants to hack on the gateway:
 
 ```bash
-git clone https://github.com/jaysperspective/thebuyside-agent.git
-cd thebuyside-agent
+git clone https://github.com/jaysperspective/thebuyside-x402-agent.git
+cd thebuyside-x402-agent
 pnpm install
 cp .env.example .env   # then paste your key into X402_PAYER_PRIVATE_KEY
 ```

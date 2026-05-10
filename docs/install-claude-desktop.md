@@ -33,7 +33,7 @@ Open the file and add (or merge into the existing `mcpServers` block):
   "mcpServers": {
     "x402-pay": {
       "command": "npx",
-      "args": ["-y", "thebuyside-agent"],
+      "args": ["-y", "thebuyside-x402-agent"],
       "env": {
         "X402_PAYER_PRIVATE_KEY": "0x..."
       }
@@ -55,7 +55,7 @@ The same `env` block accepts any of the configuration variables — see the [REA
   "mcpServers": {
     "x402-pay": {
       "command": "npx",
-      "args": ["-y", "thebuyside-agent"],
+      "args": ["-y", "thebuyside-x402-agent"],
       "env": {
         "X402_PAYER_PRIVATE_KEY": "0x...",
         "X402_DAILY_LIMIT": "0.50",
@@ -76,13 +76,13 @@ Ask Claude:
 
 > *"Use the x402.wallet_status tool."*
 
-You should get JSON back with your wallet address and spend info. If you get an error like "tool not found," check the Claude Desktop MCP logs panel (in the developer menu) for startup errors from `thebuyside-agent`.
+You should get JSON back with your wallet address and spend info. If you get an error like "tool not found," check the Claude Desktop MCP logs panel (in the developer menu) for startup errors from `thebuyside-x402-agent`.
 
 ## Troubleshooting
 
 **Server fails to start:**
 - Confirm Node 20+ is on PATH: `node --version`. Claude Desktop uses your login shell's PATH, so if `npx` isn't found, the issue is usually Node not being installed system-wide.
-- Try the bare command in a terminal: `npx -y thebuyside-agent` should boot the server (it'll wait for stdin — that's expected). Ctrl-C to exit.
+- Try the bare command in a terminal: `npx -y thebuyside-x402-agent` should boot the server (it'll wait for stdin — that's expected). Ctrl-C to exit.
 
 **Tools appear but `x402.fetch` returns "no wallet configured":**
 - The `X402_PAYER_PRIVATE_KEY` isn't set. Add it to the `env` block as shown above, then restart Claude Desktop.
