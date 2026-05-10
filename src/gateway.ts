@@ -11,6 +11,7 @@ import type { ChainAdapter } from './chains/adapter.js';
 import type { Config } from './config.js';
 import { Allowlist } from './policy/allowlist.js';
 import { CapPolicy } from './policy/caps.js';
+import { ConfirmPolicy } from './policy/confirm.js';
 import { Receipts } from './policy/receipts.js';
 import { Registry } from './registry/lookup.js';
 import { EnvKeySigner } from './signer/env-key.js';
@@ -22,6 +23,7 @@ export type Gateway = {
   allowlist: Allowlist;
   receipts: Receipts;
   caps: CapPolicy;
+  confirm: ConfirmPolicy;
   registry: Registry;
 };
 
@@ -35,6 +37,7 @@ export async function buildGateway(config: Config): Promise<Gateway> {
     allowlist: Allowlist.fromEnv({ defaultHosts: registry.hosts() }),
     receipts,
     caps: CapPolicy.fromEnv(receipts),
+    confirm: ConfirmPolicy.fromEnv(),
     registry,
   };
 }

@@ -16,9 +16,9 @@ The agent never sees the 402, never sees a wallet, never holds a private key.
 
 > `$0.005 USDC` settled on Base mainnet — tx [`0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac`](https://basescan.org/tx/0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac)
 
-- 47 unit tests + MCP smoke test, all green
+- 65 unit tests + MCP smoke test, all green
 - x402 v1 + v2 dual wire support (handles both transports)
-- Spend caps, host allowlist, receipts log, self-transfer guard
+- Spend caps, host allowlist, receipts log, self-transfer guard, confirm-before-pay (MCP elicitation)
 - Apache 2.0, DCO not CLA
 
 ## Quickstart
@@ -72,6 +72,8 @@ Spend controls have safe defaults. Override via env if needed.
 | `X402_PER_CALL_LIMIT` | `0.05` | Max USDC per single call |
 | `X402_ALLOWLIST` | hosts in `seed.json` | Comma-separated extra allowed hostnames |
 | `X402_ALLOW_UNVERIFIED` | *(off)* | `1` allows any host — dev only |
+| `X402_REQUIRE_CONFIRM` | `always` | `always`, `never`, or a USDC threshold (e.g. `0.01`). Asks the user to approve via MCP elicitation before signing |
+| `X402_CONFIRM_STRICT` | *(off)* | `1` refuses payment when the client doesn't support elicitation (default: log a warning and proceed) |
 | `X402_RECEIPTS_PATH` | `.local/receipts.jsonl` | Where the receipts log is written |
 | `X402_TEST_URL` | news-ep stories | Override target for `pnpm pay-newsep` |
 

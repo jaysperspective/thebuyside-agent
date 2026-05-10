@@ -10,8 +10,9 @@ The gateway ships with conservative defaults so a fresh install genuinely cannot
 | Daily cap | `$1.00 USDC` per rolling 24h | `X402_DAILY_LIMIT` env var |
 | Host allowlist | hosts in `src/registry/seed.json` | `X402_ALLOWLIST` env var |
 | Allow-any override | off | `X402_ALLOW_UNVERIFIED=1` |
+| Confirm before pay | always (when client supports it) | `X402_REQUIRE_CONFIRM` env var |
 
-A fresh install with a funded wallet, no other env tweaks, can spend at most `$1.00/day` to hosts in the curated registry. Worst case if an LLM agent goes haywire: `$1.00`.
+A fresh install with a funded wallet, no other env tweaks, can spend at most `$1.00/day` to hosts in the curated registry, and every payment prompts the user via MCP elicitation before signing. Worst case if an LLM agent goes haywire AND every prompt is approved without thinking: `$1.00`.
 
 ## Per-call cap
 
@@ -74,8 +75,31 @@ X402_RECEIPTS_PATH=/var/log/thebuyside-agent/receipts.jsonl
 
 The gateway refuses to sign if your payer wallet's derived address equals the seller's `payTo` (typically because you accidentally configured the seller's receiving wallet as your buyer key). This is non-configurable — it catches a real misconfig that would otherwise produce confusing CDP rejections.
 
+## Confirm before pay (MCP elicitation)
+
+Before signing any payment, the gateway sends an [MCP elicitation request](https://modelcontextprotocol.io/specification/draft/client/elicitation) to your client showing the destination, amount, resource, and today's running spend. Approving signs and pays. Declining or cancelling aborts with a clear error to the agent.
+
+```bash
+X402_REQUIRE_CONFIRM=always   # default — confirm every payment
+X402_REQUIRE_CONFIRM=never    # skip confirmation (caps remain the only gate)
+X402_REQUIRE_CONFIRM=0.01     # confirm at or above $0.01 USDC; let smaller ones through silently
+```
+
+Numeric values accept either decimal (`0.01`) or atomic units (`10000`).
+
+If the MCP client doesn't declare elicitation support (older clients, some IDE plugins), the gateway proceeds without prompting and logs a one-time warning at startup. The caps still enforce the spending ceiling, so this is fail-open-but-bounded.
+
+To make the unsupported-client case fail closed instead:
+
+```bash
+X402_CONFIRM_STRICT=1
+```
+
+In strict mode, the gateway refuses any payment when the client lacks elicitation. Recommended only if you're confident your client supports elicitation — otherwise it'll block all payments.
+
+The 30-second elicitation TTL means an unanswered prompt times out and is treated as a decline.
+
 ## What's NOT a control
 
-- **Confirm-before-pay**: the gateway does not interrupt to ask the user "really pay $X?" Future versions may use MCP elicitation when client support is universal. For now, rely on the caps.
 - **Per-host budgets**: each host counts against the same daily cap. Per-host caps are a v0.x feature.
 - **Time-of-day limits**: no quiet-hours feature. Workaround: stop the gateway via your MCP client config when you don't want it running.

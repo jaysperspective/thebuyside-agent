@@ -62,8 +62,19 @@ export function registerFetch(server: McpServer, gateway: Gateway): void {
           signer: gateway.signer,
           chains: gateway.chains,
           beforePay: async (reqs) => {
-            const decision = await gateway.caps.check(BigInt(reqs.maxAmountRequired));
-            if (!decision.ok) throw new Error(decision.reason);
+            const amountAtomic = BigInt(reqs.maxAmountRequired);
+            const capDecision = await gateway.caps.check(amountAtomic);
+            if (!capDecision.ok) throw new Error(capDecision.reason);
+
+            const confirmDecision = await gateway.confirm.ask(server, {
+              amountAtomic,
+              host: new URL(url).hostname,
+              method: m,
+              url,
+              todaySpentAtomic: await gateway.caps.spentTodayAtomic(),
+              dailyCapAtomic: gateway.caps.config.dailyLimitAtomic,
+            });
+            if (!confirmDecision.ok) throw new Error(confirmDecision.reason);
           },
           onPaid: async ({ reqs, tx }) => {
             const adapter = gateway.chains.find((c) => c.matches(reqs.network));
