@@ -1,7 +1,8 @@
 /**
  * x402 client — drives the full payment loop:
  *   1. Make the request.
- *   2. If the server returns 402, parse the challenge and pick a payment
+ *   2. If the server returns 402, parse the challenge (handles both x402 v1
+ *      and v2 wire shapes — see parseChallenge below) and pick a payment
  *      option that one of our chain adapters can satisfy.
  *   3. Have the chain adapter build the typed-data + authorization payload.
  *   4. Have the signer sign the typed data.
@@ -14,6 +15,7 @@
  * wraps this function from the `x402.fetch` MCP tool.
  */
 
+import type { Address } from 'viem';
 import type { ChainAdapter } from '../chains/adapter.js';
 import { logger } from '../log.js';
 import type { Signer } from '../signer/signer.js';
@@ -27,6 +29,19 @@ export type PayAndFetchOptions = {
   chains: ChainAdapter[];
   /** Test-only: override the global `fetch`. */
   fetchFn?: typeof fetch;
+  /**
+   * Called after parsing the 402 challenge, before signing. Throw to abort.
+   * The thrown error propagates to the caller — no signature is generated,
+   * no funds are moved. Used by the gateway to enforce spend caps.
+   */
+  beforePay?: (reqs: PaymentRequirements) => Promise<void> | void;
+  /**
+   * Called after a successful (200) paid response. Receives the requirements
+   * paid and the settle tx hash (or undefined if the facilitator omitted the
+   * X-PAYMENT-RESPONSE header). Used by the gateway to record receipts.
+   * Errors thrown here propagate to the caller.
+   */
+  onPaid?: (info: { reqs: PaymentRequirements; tx: string | undefined }) => Promise<void> | void;
 };
 
 export type PayAndFetchResult = {
@@ -45,20 +60,20 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
   const method = opts.method ?? 'GET';
 
   const baseHeaders: Record<string, string> = {};
-  let body: string | undefined;
+  let serializedBody: string | undefined;
   if (opts.body !== undefined) {
-    body = JSON.stringify(opts.body);
+    serializedBody = JSON.stringify(opts.body);
     baseHeaders['content-type'] = 'application/json';
   }
 
   // 1) Initial request.
-  const r1 = await fetchFn(opts.url, { method, headers: baseHeaders, body });
+  const r1 = await fetchFn(opts.url, { method, headers: baseHeaders, body: serializedBody });
   if (r1.status !== 402) {
     return { status: r1.status, body: await tryJson(r1), paid: false };
   }
 
   // 2) Parse challenge & pick a payment option we can satisfy.
-  const challenge = (await r1.json()) as Challenge;
+  const challenge = await parseChallenge(r1);
   const picked = pickRequirements(challenge, opts.chains);
   if (!picked) {
     throw new Error(
@@ -67,6 +82,11 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     );
   }
   const { reqs, adapter } = picked;
+
+  // 2.5) Pre-pay hook (caps, ad-hoc policies). Errors abort.
+  if (opts.beforePay) {
+    await opts.beforePay(reqs);
+  }
 
   // 3-4) Build + sign.
   const { typedData, authorization } = adapter.buildPayment(reqs, opts.signer.address);
@@ -91,7 +111,7 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
   const r2 = await fetchFn(opts.url, {
     method,
     headers: { ...baseHeaders, 'X-PAYMENT': xPayment },
-    body,
+    body: serializedBody,
   });
 
   // 7) Decode `X-PAYMENT-RESPONSE` (best-effort — the CDP facilitator
@@ -111,9 +131,16 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     }
   }
 
+  const body = await tryJson(r2);
+
+  // 7.5) Post-pay hook (record receipt). Only on 200.
+  if (r2.status === 200 && opts.onPaid) {
+    await opts.onPaid({ reqs, tx: settledTx });
+  }
+
   return {
     status: r2.status,
-    body: await tryJson(r2),
+    body,
     paid: r2.status === 200,
     paidRequirements: reqs,
     settledTx,
@@ -130,6 +157,89 @@ function pickRequirements(
     if (adapter) return { reqs, adapter };
   }
   return null;
+}
+
+/**
+ * Parse an HTTP 402 response into our internal `Challenge` type, handling
+ * both x402 wire shapes:
+ *
+ *   v1 — challenge JSON in the response body. accepts[].maxAmountRequired,
+ *        accepts[].resource is a string.
+ *
+ *   v2 — challenge in the `payment-required` response header (base64 JSON);
+ *        body is `{}`. accepts[].amount (renamed). resource moved to top
+ *        level as `{ url, description, mimeType }`. network in CAIP-2.
+ *
+ * Both are normalized into the v1-shaped internal `Challenge`/
+ * `PaymentRequirements` types so the rest of the code (adapters, signers,
+ * X-PAYMENT builder) is version-agnostic.
+ */
+export async function parseChallenge(response: Response): Promise<Challenge> {
+  const v2Header = response.headers.get('payment-required');
+  if (v2Header && v2Header.length > 0) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(Buffer.from(v2Header, 'base64').toString('utf8'));
+    } catch {
+      throw new Error('payment-required header was not valid base64 JSON');
+    }
+    return normalizeChallenge(decoded);
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error(
+      '402 response had no `payment-required` header and body was not JSON',
+    );
+  }
+  return normalizeChallenge(body);
+}
+
+type RawAccept = {
+  scheme?: string;
+  network?: string;
+  maxAmountRequired?: string;
+  amount?: string;
+  resource?: string;
+  description?: string;
+  mimeType?: string;
+  payTo?: Address;
+  maxTimeoutSeconds?: number;
+  asset?: Address;
+  extra?: { name: string; version: string };
+};
+type RawChallenge = {
+  x402Version?: number;
+  error?: string;
+  resource?: string | { url?: string; description?: string; mimeType?: string };
+  accepts?: RawAccept[];
+};
+
+function normalizeChallenge(raw: unknown): Challenge {
+  const r = (raw ?? {}) as RawChallenge;
+  const topResource =
+    typeof r.resource === 'object' && r.resource !== null ? r.resource : null;
+
+  const accepts: PaymentRequirements[] = (r.accepts ?? []).map((a) => ({
+    scheme: a.scheme as 'exact',
+    network: a.network ?? '',
+    maxAmountRequired: a.maxAmountRequired ?? a.amount ?? '0',
+    resource: topResource?.url ?? a.resource ?? '',
+    description: topResource?.description ?? a.description,
+    mimeType: topResource?.mimeType ?? a.mimeType,
+    payTo: (a.payTo ?? '0x0000000000000000000000000000000000000000') as Address,
+    maxTimeoutSeconds: a.maxTimeoutSeconds ?? 60,
+    asset: (a.asset ?? '0x0000000000000000000000000000000000000000') as Address,
+    extra: a.extra ?? { name: '', version: '' },
+  }));
+
+  return {
+    x402Version: r.x402Version ?? 1,
+    error: r.error,
+    accepts,
+  };
 }
 
 async function tryJson(r: Response): Promise<unknown> {

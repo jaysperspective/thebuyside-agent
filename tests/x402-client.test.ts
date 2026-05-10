@@ -30,6 +30,45 @@ const NEWSEP_402_BODY = {
   ],
 };
 
+// x402 v2 wire shape, as observed on news-ep.com 2026-05-09:
+//  - challenge in the `payment-required` response header (base64 JSON)
+//  - body is `{}`
+//  - accepts[].amount (renamed from maxAmountRequired)
+//  - top-level resource object {url, description, mimeType}
+//  - CAIP-2 network identifier
+const NEWSEP_V2_CHALLENGE = {
+  x402Version: 2,
+  resource: {
+    url: 'https://example.test/api',
+    description: 'test resource',
+    mimeType: 'application/json',
+  },
+  accepts: [
+    {
+      scheme: 'exact',
+      network: 'eip155:8453',
+      asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      amount: '5000',
+      payTo: '0xc8CaE186fb4f382D3DD9C82cbA976C255531540C',
+      maxTimeoutSeconds: 300,
+      extra: { name: 'USD Coin', version: '2' },
+    },
+  ],
+};
+
+function v2ChallengeResponse(): Response {
+  const headerValue = Buffer.from(JSON.stringify(NEWSEP_V2_CHALLENGE)).toString(
+    'base64',
+  );
+  return new Response('{}', {
+    status: 402,
+    headers: {
+      'content-type': 'application/json',
+      'payment-required': headerValue,
+    },
+  });
+}
+
 type Call = { url: string; init?: RequestInit };
 
 function makeMockFetch(responses: Response[]): { fetchFn: typeof fetch; calls: Call[] } {
@@ -165,6 +204,95 @@ describe('payAndFetch', () => {
     expect(result.settledTx).toBe('0xdeadbeef');
   });
 
+  it('calls beforePay with the parsed requirements', async () => {
+    const { fetchFn } = makeMockFetch([
+      new Response(JSON.stringify(NEWSEP_402_BODY), { status: 402 }),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let seenAmount: string | null = null;
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        seenAmount = reqs.maxAmountRequired;
+      },
+    });
+
+    expect(seenAmount).toBe('5000');
+  });
+
+  it('aborts without paying if beforePay throws', async () => {
+    const { fetchFn, calls } = makeMockFetch([
+      new Response(JSON.stringify(NEWSEP_402_BODY), { status: 402 }),
+      // No second response — second call would explode out of responses
+    ]);
+
+    await expect(
+      payAndFetch({
+        url: 'https://example.test/api',
+        signer: new EnvKeySigner(TEST_KEY),
+        chains: [new BaseUsdcAdapter()],
+        fetchFn,
+        beforePay: () => {
+          throw new Error('cap exceeded');
+        },
+      }),
+    ).rejects.toThrow(/cap exceeded/);
+
+    // Only the initial 402 fetch happened — no payment attempt.
+    expect(calls).toHaveLength(1);
+  });
+
+  it('calls onPaid only after a successful 200', async () => {
+    const { fetchFn } = makeMockFetch([
+      new Response(JSON.stringify(NEWSEP_402_BODY), { status: 402 }),
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          'x-payment-response': Buffer.from(
+            JSON.stringify({ transaction: '0xfeedface' }),
+          ).toString('base64'),
+        },
+      }),
+    ]);
+
+    const calls: Array<{ amount: string; tx: string | undefined }> = [];
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      onPaid: ({ reqs, tx }) => {
+        calls.push({ amount: reqs.maxAmountRequired, tx });
+      },
+    });
+
+    expect(calls).toEqual([{ amount: '5000', tx: '0xfeedface' }]);
+  });
+
+  it('does NOT call onPaid if the second response is not 200', async () => {
+    const { fetchFn } = makeMockFetch([
+      new Response(JSON.stringify(NEWSEP_402_BODY), { status: 402 }),
+      new Response(JSON.stringify({ error: 'facilitator rejected' }), { status: 402 }),
+    ]);
+
+    let called = false;
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      onPaid: () => {
+        called = true;
+      },
+    });
+
+    expect(called).toBe(false);
+  });
+
   it('tolerates missing X-PAYMENT-RESPONSE (CDP facilitator quirk)', async () => {
     const { fetchFn } = makeMockFetch([
       new Response(JSON.stringify(NEWSEP_402_BODY), { status: 402 }),
@@ -180,5 +308,97 @@ describe('payAndFetch', () => {
 
     expect(result.paid).toBe(true);
     expect(result.settledTx).toBeUndefined();
+  });
+
+  // ---------- x402 v2 (header transport, observed on news-ep 2026-05-09) ----------
+
+  it('handles an x402 v2 challenge from the payment-required header', async () => {
+    const { fetchFn, calls } = makeMockFetch([
+      v2ChallengeResponse(),
+      new Response(JSON.stringify({ ok: true, version: 2 }), { status: 200 }),
+    ]);
+
+    const signer = new EnvKeySigner(TEST_KEY);
+    const result = await payAndFetch({
+      url: 'https://example.test/api',
+      signer,
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.paid).toBe(true);
+    expect(result.body).toEqual({ ok: true, version: 2 });
+    expect(result.paidRequirements?.maxAmountRequired).toBe('5000');
+    expect(result.paidRequirements?.network).toBe('eip155:8453');
+
+    // X-PAYMENT header should carry x402Version: 2 (echoed from challenge)
+    const headers2 = (calls[1].init?.headers ?? {}) as Record<string, string>;
+    const decoded = JSON.parse(
+      Buffer.from(headers2['X-PAYMENT'], 'base64').toString('utf8'),
+    );
+    expect(decoded.x402Version).toBe(2);
+    expect(decoded.scheme).toBe('exact');
+    expect(decoded.network).toBe('eip155:8453');
+    expect(decoded.payload.authorization.from).toBe(signer.address);
+    expect(decoded.payload.authorization.value).toBe('5000');
+    expect(decoded.payload.authorization.nonce).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it('rejects a malformed payment-required header', async () => {
+    const { fetchFn } = makeMockFetch([
+      new Response('{}', {
+        status: 402,
+        headers: { 'payment-required': 'not-base64-json!!!' },
+      }),
+    ]);
+
+    await expect(
+      payAndFetch({
+        url: 'https://example.test/api',
+        signer: new EnvKeySigner(TEST_KEY),
+        chains: [new BaseUsdcAdapter()],
+        fetchFn,
+      }),
+    ).rejects.toThrow(/payment-required header/);
+  });
+
+  it('throws when 402 has neither v2 header nor a JSON body', async () => {
+    const { fetchFn } = makeMockFetch([
+      new Response('not json', { status: 402 }),
+    ]);
+
+    await expect(
+      payAndFetch({
+        url: 'https://example.test/api',
+        signer: new EnvKeySigner(TEST_KEY),
+        chains: [new BaseUsdcAdapter()],
+        fetchFn,
+      }),
+    ).rejects.toThrow(/no `payment-required` header/);
+  });
+
+  it('beforePay sees the v2 challenge with normalized fields', async () => {
+    const { fetchFn } = makeMockFetch([
+      v2ChallengeResponse(),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let observedAmount: string | null = null;
+    let observedNetwork: string | null = null;
+
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        observedAmount = reqs.maxAmountRequired;
+        observedNetwork = reqs.network;
+      },
+    });
+
+    expect(observedAmount).toBe('5000');
+    expect(observedNetwork).toBe('eip155:8453');
   });
 });
