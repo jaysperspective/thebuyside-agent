@@ -28,9 +28,24 @@ export function registerWalletStatus(server: McpServer, gateway: Gateway): void 
       const dailyAtomic = gateway.caps.config.dailyLimitAtomic;
       const remainingAtomic = dailyAtomic - spentTodayAtomic;
 
+      const evmAddr = gateway.signers.evm?.address ?? null;
+      const svmAddr = gateway.signers.svm?.publicKey ?? null;
       const status = {
-        address: gateway.signer?.address ?? '(no wallet — set X402_PAYER_PRIVATE_KEY)',
+        // Backward-compat: pre-M8 callers expect a string `address`. If only
+        // one chain is configured, that's the address. If both are configured,
+        // we expose `address` for EVM (the original chain) and `solana_address`
+        // separately. If neither is configured, the message stays the same.
+        address:
+          evmAddr ??
+          svmAddr ??
+          '(no wallet — set X402_PAYER_PRIVATE_KEY and/or X402_PAYER_SOLANA_KEY)',
+        evm_address: evmAddr,
+        solana_address: svmAddr,
         chains: gateway.chains.map((c) => c.id),
+        chains_with_signer: [
+          ...(evmAddr ? ['evm'] : []),
+          ...(svmAddr ? ['svm'] : []),
+        ],
         currency: 'USDC',
         spent_today_usdc: formatUsdcAtomic(spentTodayAtomic),
         daily_limit_usdc: formatUsdcAtomic(dailyAtomic),

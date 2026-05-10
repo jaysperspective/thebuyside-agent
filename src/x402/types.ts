@@ -26,10 +26,12 @@ export type PaymentRequirements = {
   /** ERC-20 contract address for the asset (e.g. USDC on Base). */
   asset: Address;
   /**
-   * EIP-712 domain identity for the asset's `transferWithAuthorization`.
-   * Critical: Base mainnet USDC's EIP-712 name is "USD Coin" (NOT "USDC").
+   * Scheme-specific extension data on the payment requirement. EVM uses
+   * `{name, version}` (EIP-712 domain identity for `transferWithAuthorization`;
+   * critical: Base mainnet USDC's name is "USD Coin", NOT "USDC"). Solana
+   * uses `{feePayer, memo?}`. Each chain adapter narrows this internally.
    */
-  extra: { name: string; version: string };
+  extra: Record<string, unknown>;
   /**
    * Per-accept extension metadata. Sellers (and indexes like CDP Bazaar) bake
    * arbitrary metadata into v2 challenges under `extensions.*` — e.g.

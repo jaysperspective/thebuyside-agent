@@ -1,16 +1,18 @@
 /**
- * Signer interface — abstracts "produce an EIP-712 signature for typed data".
+ * Signer interface — abstracts "produce a signature for an x402 payment."
  *
- * v0 has one implementation: `EnvKeySigner` (BYO private key from env). The
- * hosted-product path will add a `KmsSigner` that delegates signing to a
- * managed key service (AWS KMS, Coinbase CDP-managed wallets, etc.) without
- * the gateway ever seeing raw key material.
+ * Discriminated union by chain kind. EVM signs EIP-712 typed data and
+ * returns a hex signature; SVM (Solana) signs a partially-built
+ * VersionedTransaction in place and returns the same tx with the buyer's
+ * signature attached. Same `kind` discriminator as ChainAdapter so the
+ * protocol loop pairs them by branching once.
  *
- * Note: this interface is EVM-shaped (EIP-712 typed data). When we add a
- * non-EVM chain (Solana via Pay.sh in v0.2), we'll either widen this interface
- * or introduce a sibling `SolanaSigner`. Both are clean refactors from here.
+ * The hosted-product path will add a KMS-backed sibling for each kind
+ * (KmsEvmSigner / KmsSolanaSigner) that delegates signing to a managed
+ * key service without the gateway ever seeing raw key material.
  */
 
+import type { VersionedTransaction } from '@solana/web3.js';
 import type { Address, Hex } from 'viem';
 
 export type Eip712TypedData = {
@@ -25,7 +27,22 @@ export type Eip712TypedData = {
   message: Record<string, unknown>;
 };
 
-export interface Signer {
+export interface EvmSigner {
+  readonly kind: 'evm';
   readonly address: Address;
   signTypedData(typedData: Eip712TypedData): Promise<Hex>;
 }
+
+export interface SolanaSigner {
+  readonly kind: 'svm';
+  /** Base58-encoded public key. */
+  readonly publicKey: string;
+  /**
+   * Add the buyer's signature to a versioned tx. The seller's feePayer
+   * slot is left untouched — the facilitator counter-signs and broadcasts.
+   * Returns the same tx instance with the signature attached.
+   */
+  signTransaction(tx: VersionedTransaction): Promise<VersionedTransaction>;
+}
+
+export type Signer = EvmSigner | SolanaSigner;

@@ -48,10 +48,13 @@ export function registerFetch(server: McpServer, gateway: Gateway): void {
         return errorResponse(allow.reason);
       }
 
-      // Pre-flight: wallet must exist before we can pay.
-      if (!gateway.signer) {
+      // Pre-flight: at least one wallet must exist before we can pay.
+      // Per-chain availability is enforced inside payAndFetch's
+      // pickRequirements once the 402 challenge tells us which chain.
+      if (gateway.signers.evm === null && gateway.signers.svm === null) {
         return errorResponse(
-          'no wallet configured — set X402_PAYER_PRIVATE_KEY in .env (and restart the gateway)',
+          'no wallet configured — set X402_PAYER_PRIVATE_KEY (EVM) and/or ' +
+            'X402_PAYER_SOLANA_KEY (Solana) in .env, then restart the gateway',
         );
       }
 
@@ -59,7 +62,7 @@ export function registerFetch(server: McpServer, gateway: Gateway): void {
         const result = await payAndFetch({
           url,
           method: m,
-          signer: gateway.signer,
+          signers: gateway.signers,
           chains: gateway.chains,
           beforePay: async (reqs) => {
             const amountAtomic = BigInt(reqs.maxAmountRequired);

@@ -10,9 +10,10 @@
 
 import type { Address, Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import type { Eip712TypedData, Signer } from './signer.js';
+import type { Eip712TypedData, EvmSigner } from './signer.js';
 
-export class EnvKeySigner implements Signer {
+export class EnvKeySigner implements EvmSigner {
+  readonly kind = 'evm' as const;
   readonly address: Address;
   private readonly account: ReturnType<typeof privateKeyToAccount>;
 

@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   const result = await payAndFetch({
     url: TEST_URL,
-    signer,
+    signers: { evm: signer, svm: null },
     chains: [new BaseUsdcAdapter()],
   });
 

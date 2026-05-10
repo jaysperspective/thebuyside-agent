@@ -100,7 +100,7 @@ describe('payAndFetch', () => {
     const signer = new EnvKeySigner(TEST_KEY);
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer,
+      signers: { evm: signer, svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -146,7 +146,7 @@ describe('payAndFetch', () => {
 
     const result = await payAndFetch({
       url: 'https://example.test/free',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -171,7 +171,7 @@ describe('payAndFetch', () => {
     await expect(
       payAndFetch({
         url: 'https://example.test/api',
-        signer: new EnvKeySigner(TEST_KEY),
+        signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
         chains: [new BaseUsdcAdapter()],
         fetchFn,
       }),
@@ -199,7 +199,7 @@ describe('payAndFetch', () => {
 
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -216,7 +216,7 @@ describe('payAndFetch', () => {
     let seenAmount: string | null = null;
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {
@@ -236,7 +236,7 @@ describe('payAndFetch', () => {
     await expect(
       payAndFetch({
         url: 'https://example.test/api',
-        signer: new EnvKeySigner(TEST_KEY),
+        signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
         chains: [new BaseUsdcAdapter()],
         fetchFn,
         beforePay: () => {
@@ -265,7 +265,7 @@ describe('payAndFetch', () => {
     const calls: Array<{ amount: string; tx: string | undefined }> = [];
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       onPaid: ({ reqs, tx }) => {
@@ -285,7 +285,7 @@ describe('payAndFetch', () => {
     let called = false;
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       onPaid: () => {
@@ -304,7 +304,7 @@ describe('payAndFetch', () => {
 
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -324,7 +324,7 @@ describe('payAndFetch', () => {
     const signer = new EnvKeySigner(TEST_KEY);
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer,
+      signers: { evm: signer, svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -390,7 +390,7 @@ describe('payAndFetch', () => {
     await expect(
       payAndFetch({
         url: 'https://example.test/api',
-        signer,
+        signers: { evm: signer, svm: null },
         chains: [new BaseUsdcAdapter()],
         fetchFn,
       }),
@@ -415,7 +415,7 @@ describe('payAndFetch', () => {
 
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -434,7 +434,7 @@ describe('payAndFetch', () => {
     await expect(
       payAndFetch({
         url: 'https://example.test/api',
-        signer: new EnvKeySigner(TEST_KEY),
+        signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
         chains: [new BaseUsdcAdapter()],
         fetchFn,
       }),
@@ -449,7 +449,7 @@ describe('payAndFetch', () => {
     await expect(
       payAndFetch({
         url: 'https://example.test/api',
-        signer: new EnvKeySigner(TEST_KEY),
+        signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
         chains: [new BaseUsdcAdapter()],
         fetchFn,
       }),
@@ -479,7 +479,7 @@ describe('payAndFetch', () => {
 
     const result = await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
     });
@@ -507,7 +507,7 @@ describe('payAndFetch', () => {
 
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {
@@ -549,7 +549,7 @@ describe('payAndFetch', () => {
     let seenExt: Record<string, unknown> | undefined;
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {
@@ -581,7 +581,7 @@ describe('payAndFetch', () => {
     let seenExt: Record<string, unknown> | undefined;
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {
@@ -618,7 +618,7 @@ describe('payAndFetch', () => {
     let seenExt: Record<string, unknown> | undefined;
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {
@@ -642,7 +642,7 @@ describe('payAndFetch', () => {
     let seenExt: Record<string, unknown> | undefined = { sentinel: true };
     await payAndFetch({
       url: 'https://example.test/api',
-      signer: new EnvKeySigner(TEST_KEY),
+      signers: { evm: new EnvKeySigner(TEST_KEY), svm: null },
       chains: [new BaseUsdcAdapter()],
       fetchFn,
       beforePay: (reqs) => {

@@ -1,8 +1,10 @@
 /**
  * Config loader. Reads `.env` (via dotenv) and validates env vars at startup.
  *
- * The wallet key is intentionally optional at M1 — the gateway boots and lists
- * tools without it; payment-shaped tools just won't have a real address to use.
+ * Wallet keys are optional at boot — the gateway boots and lists tools
+ * without any keys; payment-shaped tools simply error if asked to pay
+ * on a chain without a configured signer. Users can configure EVM only,
+ * Solana only, or both.
  *
  * `.env` is loaded by absolute path (relative to this file) so the gateway
  * works correctly when spawned from any cwd — e.g. by Claude Desktop, where
@@ -19,8 +21,14 @@ const projectRoot = resolve(here, '..');
 loadDotenv({ path: resolve(projectRoot, '.env') });
 
 export type Config = {
-  /** Hex 0x-prefixed private key, or null if unset / placeholder. */
+  /** Hex 0x-prefixed EVM private key, or null if unset / placeholder. */
   payerPrivateKey: Hex | null;
+  /**
+   * Solana secret key in either base58 (Phantom export) or
+   * JSON-array (solana-keygen output) format. Stored as the raw string;
+   * the signer decodes + validates. Null if unset / placeholder.
+   */
+  payerSolanaKey: string | null;
 };
 
 function parsePrivateKey(raw: string | undefined): Hex | null {
@@ -34,8 +42,16 @@ function parsePrivateKey(raw: string | undefined): Hex | null {
   return raw as Hex;
 }
 
+function parseSolanaKey(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === 'PASTE_YOUR_SOLANA_KEY_HERE') return null;
+  return trimmed;
+}
+
 export function loadConfig(): Config {
   return {
     payerPrivateKey: parsePrivateKey(process.env.X402_PAYER_PRIVATE_KEY),
+    payerSolanaKey: parseSolanaKey(process.env.X402_PAYER_SOLANA_KEY),
   };
 }

@@ -16,16 +16,21 @@
  */
 
 import type { Address } from 'viem';
-import type { ChainAdapter } from '../chains/adapter.js';
+import type { ChainAdapter, ChainKind } from '../chains/adapter.js';
 import { logger } from '../log.js';
-import type { Signer } from '../signer/signer.js';
+import type { EvmSigner, SolanaSigner } from '../signer/signer.js';
 import type { Challenge, PaymentPayload, PaymentRequirements } from './types.js';
+
+export type SignerSet = {
+  evm: EvmSigner | null;
+  svm: SolanaSigner | null;
+};
 
 export type PayAndFetchOptions = {
   url: string;
   method?: 'GET' | 'POST';
   body?: unknown;
-  signer: Signer;
+  signers: SignerSet;
   chains: ChainAdapter[];
   /** Test-only: override the global `fetch`. */
   fetchFn?: typeof fetch;
@@ -86,32 +91,27 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     return { status: r1.status, body: await tryJson(r1), paid: false };
   }
 
-  // 2) Parse challenge & pick a payment option we can satisfy.
+  // 2) Parse challenge & pick a payment option we can satisfy. We need
+  //    BOTH a chain adapter for the offered network AND a signer for that
+  //    adapter's kind — pickRequirements considers both.
   const challenge = await parseChallenge(r1);
-  const picked = pickRequirements(challenge, opts.chains);
+  const picked = pickRequirements(challenge, opts.chains, opts.signers);
   if (!picked) {
     throw new Error(
-      'no chain adapter for any of the offered networks: ' +
-        challenge.accepts.map((a) => `${a.scheme}/${a.network}`).join(', '),
+      'no chain adapter + matching signer for any of the offered networks: ' +
+        challenge.accepts.map((a) => `${a.scheme}/${a.network}`).join(', ') +
+        '. Configured signers: ' +
+        configuredSignerKinds(opts.signers).join(', '),
     );
   }
   const { reqs, adapter } = picked;
+  const payerAddressForLog = signerAddressFor(adapter.kind, opts.signers);
 
   // 2.4) Sanity: refuse to sign if the payer wallet IS the receiver wallet.
-  //       EIP-3009 self-transfers are nonsensical and CDP's facilitator
-  //       rejects them as `invalid_payload`. In practice this happens when
-  //       a user configures X402_PAYER_PRIVATE_KEY to a key whose derived
-  //       address equals the seller's payTo (e.g. they reused a Coinbase
-  //       receiving wallet's key as the buyer key). Catching this here
-  //       gives a clear error instead of an opaque facilitator rejection.
-  if (opts.signer.address.toLowerCase() === reqs.payTo.toLowerCase()) {
-    throw new Error(
-      `payer wallet (${opts.signer.address}) is the same as the seller's ` +
-        `payTo address — you cannot pay yourself. Configure a different ` +
-        `X402_PAYER_PRIVATE_KEY (a wallet you control that is NOT the ` +
-        `seller's receiving wallet).`,
-    );
-  }
+  //       Self-transfers are nonsensical and CDP's facilitator rejects them
+  //       as `invalid_payload`. Per-chain because address formats differ
+  //       (EVM = 0x-hex case-insensitive; Solana = base58 case-sensitive).
+  assertNotSelfPay(adapter.kind, opts.signers, reqs);
 
   // 2.5) Merge top-level challenge extensions into the picked reqs so
   //      consumers (caps, confirm prompt) see a single combined extension
@@ -125,23 +125,43 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     await opts.beforePay(reqs);
   }
 
-  // 3-4) Build + sign.
-  const { typedData, authorization } = adapter.buildPayment(reqs, opts.signer.address);
-  const signature = await opts.signer.signTypedData(typedData);
+  // 3-4-5) Build + sign + encode. Branches by chain kind because EVM and
+  //        SVM have entirely different signing models — EIP-712 + EIP-3009
+  //        for EVM vs partially-signed VersionedTransaction for Solana —
+  //        and the v2 payload shape differs accordingly.
+  const isV2 = (challenge.x402Version ?? 1) >= 2;
+  let payload: Record<string, unknown>;
+  if (adapter.kind === 'evm') {
+    const signer = opts.signers.evm!; // pickRequirements guarantees presence
+    const { typedData, authorization } = adapter.buildPayment(reqs, signer.address);
+    const signature = await signer.signTypedData(typedData);
+    payload = { signature, authorization };
+  } else {
+    const signer = opts.signers.svm!;
+    const { tx } = await adapter.buildPayment(reqs, signer.publicKey);
+    const signed = await signer.signTransaction(tx);
+    const serialized = signed.serialize();
+    const transactionB64 = Buffer.from(serialized).toString('base64');
+    payload = { transaction: transactionB64 };
+  }
 
   logger.info('x402 payment built', {
     host: new URL(opts.url).host,
     chain: adapter.id,
+    kind: adapter.kind,
     amount: reqs.maxAmountRequired,
     x402Version: challenge.x402Version,
   });
 
-  // 5) Encode the payment payload + pick the right request header name.
-  //    v1: X-PAYMENT, v2: PAYMENT-SIGNATURE. Body shapes also differ —
-  //    v2 wraps the chosen option under `accepted` and echoes a top-level
-  //    `resource` object. See specs/schemes/exact/scheme_exact_evm.md in
-  //    the coinbase/x402 repo.
-  const isV2 = (challenge.x402Version ?? 1) >= 2;
+  // v1 wire format only ever supported the EVM payload shape — it was
+  // defined before SVM landed. SVM payments require v2, which all current
+  // SVM facilitators emit anyway.
+  if (adapter.kind === 'svm' && !isV2) {
+    throw new Error(
+      'Solana payments require x402 v2; seller advertised an x402 v1 challenge.',
+    );
+  }
+
   const paymentBody: unknown = isV2
     ? {
         x402Version: 2,
@@ -159,16 +179,17 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
           maxTimeoutSeconds: reqs.maxTimeoutSeconds,
           extra: reqs.extra,
         },
-        payload: { signature, authorization },
+        payload,
       }
     : ({
         x402Version: 1,
         scheme: reqs.scheme,
         network: reqs.network,
-        payload: { signature, authorization },
+        payload: payload as PaymentPayload['payload'],
       } satisfies PaymentPayload);
   const encodedPayment = Buffer.from(JSON.stringify(paymentBody)).toString('base64');
   const paymentHeaderName = isV2 ? 'PAYMENT-SIGNATURE' : 'X-PAYMENT';
+  void payerAddressForLog; // surfaced to callers via paidRequirements + logs already
 
   // 6) Re-request with the payment header.
   const r2 = await fetchFn(opts.url, {
@@ -247,13 +268,56 @@ function captureFailure(r: Response): FailureDiagnostics {
 function pickRequirements(
   challenge: Challenge,
   chains: ChainAdapter[],
+  signers: SignerSet,
 ): { reqs: PaymentRequirements; adapter: ChainAdapter } | null {
   for (const reqs of challenge.accepts) {
     if (reqs.scheme !== 'exact') continue;
     const adapter = chains.find((c) => c.matches(reqs.network));
-    if (adapter) return { reqs, adapter };
+    if (!adapter) continue;
+    // Skip adapters whose kind has no configured signer — surface a clear
+    // "no signer" error one frame up rather than failing inside buildPayment.
+    if (adapter.kind === 'evm' && signers.evm === null) continue;
+    if (adapter.kind === 'svm' && signers.svm === null) continue;
+    return { reqs, adapter };
   }
   return null;
+}
+
+function configuredSignerKinds(signers: SignerSet): ChainKind[] {
+  const out: ChainKind[] = [];
+  if (signers.evm) out.push('evm');
+  if (signers.svm) out.push('svm');
+  return out;
+}
+
+function signerAddressFor(kind: ChainKind, signers: SignerSet): string {
+  if (kind === 'evm') return signers.evm?.address ?? '(none)';
+  return signers.svm?.publicKey ?? '(none)';
+}
+
+function assertNotSelfPay(
+  kind: ChainKind,
+  signers: SignerSet,
+  reqs: PaymentRequirements,
+): void {
+  if (kind === 'evm' && signers.evm) {
+    if (signers.evm.address.toLowerCase() === reqs.payTo.toLowerCase()) {
+      throw new Error(
+        `payer wallet (${signers.evm.address}) is the same as the seller's ` +
+          `payTo address — you cannot pay yourself. Configure a different ` +
+          `X402_PAYER_PRIVATE_KEY (a wallet you control that is NOT the ` +
+          `seller's receiving wallet).`,
+      );
+    }
+  } else if (kind === 'svm' && signers.svm) {
+    if (signers.svm.publicKey === reqs.payTo) {
+      throw new Error(
+        `payer pubkey (${signers.svm.publicKey}) is the same as the seller's ` +
+          `payTo address — you cannot pay yourself. Configure a different ` +
+          `X402_PAYER_SOLANA_KEY.`,
+      );
+    }
+  }
 }
 
 /**
@@ -305,7 +369,7 @@ type RawAccept = {
   payTo?: Address;
   maxTimeoutSeconds?: number;
   asset?: Address;
-  extra?: { name: string; version: string };
+  extra?: Record<string, unknown>;
   extensions?: Record<string, unknown>;
 };
 type RawChallenge = {
@@ -331,7 +395,7 @@ function normalizeChallenge(raw: unknown): Challenge {
     payTo: (a.payTo ?? '0x0000000000000000000000000000000000000000') as Address,
     maxTimeoutSeconds: a.maxTimeoutSeconds ?? 60,
     asset: (a.asset ?? '0x0000000000000000000000000000000000000000') as Address,
-    extra: a.extra ?? { name: '', version: '' },
+    extra: a.extra ?? {},
     extensions: a.extensions,
   }));
 

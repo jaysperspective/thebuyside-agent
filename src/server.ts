@@ -39,8 +39,8 @@ export async function startServer(): Promise<void> {
   await server.connect(transport);
 
   logger.info('thebuyside-x402-agent MCP server ready', {
-    walletConfigured: gateway.signer !== null,
-    walletAddress: gateway.signer?.address ?? null,
+    evmAddress: gateway.signers.evm?.address ?? null,
+    solanaAddress: gateway.signers.svm?.publicKey ?? null,
     chains: gateway.chains.map((c) => c.id),
     allowedHosts: gateway.allowlist.allowedHosts,
     registryEntries: gateway.registry.entries.length,
