@@ -1,10 +1,40 @@
 {
   "name": "thebuyside-agent",
-  "version": "0.0.1",
-  "description": "MCP gateway for x402-priced APIs — buyer-side reference implementation.",
+  "version": "0.1.0",
+  "description": "Buyer-side x402 MCP gateway — let any agent pay any x402 API without seeing a 402 or a wallet.",
   "license": "Apache-2.0",
-  "private": true,
+  "author": "Joshua Harrington",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "thebuyside-agent": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "keywords": [
+    "x402",
+    "mcp",
+    "model-context-protocol",
+    "crypto-payments",
+    "agents",
+    "usdc",
+    "base",
+    "stablecoin",
+    "agent-payments"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaysperspective/thebuyside-agent.git"
+  },
+  "homepage": "https://github.com/jaysperspective/thebuyside-agent#readme",
+  "bugs": {
+    "url": "https://github.com/jaysperspective/thebuyside-agent/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -15,7 +45,9 @@
     "test": "vitest run",
     "pay-newsep": "tsx scripts/pay-newsep.ts",
     "verify-seed": "tsx scripts/verify-seed.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

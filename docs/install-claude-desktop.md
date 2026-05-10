@@ -1,6 +1,6 @@
 # Install in Claude Desktop
 
-For Claude Code (CLI) install, see the [README quickstart](../README.md#claude-code-cli).
+For Claude Code (CLI) install, see the [README quickstart](../README.md#quickstart).
 
 ## 1. Find the config file
 
@@ -32,37 +32,39 @@ Open the file and add (or merge into the existing `mcpServers` block):
 {
   "mcpServers": {
     "x402-pay": {
-      "command": "/ABSOLUTE/PATH/TO/thebuyside-agent/node_modules/.bin/tsx",
-      "args": ["/ABSOLUTE/PATH/TO/thebuyside-agent/src/index.ts"]
-    }
-  }
-}
-```
-
-Replace `/ABSOLUTE/PATH/TO/` with the full path on your machine. From the project directory, run `pwd` to get it.
-
-> **Why absolute paths?** Claude Desktop spawns the MCP server as a subprocess and may not run it from your project directory. Absolute paths remove the ambiguity.
-
-## 3. Pass through environment variables (optional)
-
-If you want a wallet other than what's in your `.env`, or want to override spend caps per-install, add an `env` block:
-
-```json
-{
-  "mcpServers": {
-    "x402-pay": {
-      "command": "/ABSOLUTE/PATH/.../tsx",
-      "args": ["/ABSOLUTE/PATH/.../src/index.ts"],
+      "command": "npx",
+      "args": ["-y", "thebuyside-agent"],
       "env": {
-        "X402_PAYER_PRIVATE_KEY": "0x...",
-        "X402_DAILY_LIMIT": "0.50"
+        "X402_PAYER_PRIVATE_KEY": "0x..."
       }
     }
   }
 }
 ```
 
-> Anything in the `env` block overrides the `.env` file.
+Paste your Base-mainnet wallet private key into `X402_PAYER_PRIVATE_KEY`. Use a fresh wallet, not your main one. Fund it with at least `$0.01 USDC` on Base mainnet.
+
+> **Why the `env` block?** Claude Desktop spawns the MCP server as a subprocess and doesn't pass through your shell's environment. Setting the key in the config is the most reliable path.
+
+## 3. Override spend caps (optional)
+
+The same `env` block accepts any of the configuration variables — see the [README config table](../README.md#configuration). Common overrides:
+
+```json
+{
+  "mcpServers": {
+    "x402-pay": {
+      "command": "npx",
+      "args": ["-y", "thebuyside-agent"],
+      "env": {
+        "X402_PAYER_PRIVATE_KEY": "0x...",
+        "X402_DAILY_LIMIT": "0.50",
+        "X402_PER_CALL_LIMIT": "0.02"
+      }
+    }
+  }
+}
+```
 
 ## 4. Restart Claude Desktop
 
@@ -79,11 +81,11 @@ You should get JSON back with your wallet address and spend info. If you get an 
 ## Troubleshooting
 
 **Server fails to start:**
-- Run `pnpm smoke` from the project directory. If that works, the gateway is fine and the issue is in the Claude Desktop config (most often a path typo).
-- Check that `tsx` exists at the path you wrote: `ls /ABSOLUTE/PATH/TO/thebuyside-agent/node_modules/.bin/tsx`.
+- Confirm Node 20+ is on PATH: `node --version`. Claude Desktop uses your login shell's PATH, so if `npx` isn't found, the issue is usually Node not being installed system-wide.
+- Try the bare command in a terminal: `npx -y thebuyside-agent` should boot the server (it'll wait for stdin — that's expected). Ctrl-C to exit.
 
 **Tools appear but `x402.fetch` returns "no wallet configured":**
-- The `.env` file isn't being read. The gateway resolves `.env` relative to the source path, so it should pick up `.env` in the project directory regardless of Claude Desktop's cwd. If it doesn't, set `X402_PAYER_PRIVATE_KEY` in the config's `env` block instead.
+- The `X402_PAYER_PRIVATE_KEY` isn't set. Add it to the `env` block as shown above, then restart Claude Desktop.
 
 **Tools work but every call returns "host ... is not in the allowlist":**
-- The host you're trying to fetch isn't in `src/registry/seed.json`. Either add it to the seed list (see [docs/adding-an-api.md](adding-an-api.md)) or set `X402_ALLOWLIST=that-host.com` in the `env` block.
+- The host you're trying to fetch isn't in the bundled registry. Either submit a PR to add it (see [adding-an-api.md](adding-an-api.md)) or set `X402_ALLOWLIST=that-host.com` in the `env` block.

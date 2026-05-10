@@ -2,6 +2,9 @@
  * MCP server boot. Constructs the gateway, registers tools, wires stdio.
  */
 
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig } from './config.js';
@@ -11,13 +14,21 @@ import { registerDiscover } from './tools/discover.js';
 import { registerFetch } from './tools/fetch.js';
 import { registerWalletStatus } from './tools/wallet_status.js';
 
+async function loadPackageVersion(): Promise<string> {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const pkgPath = resolve(here, '..', 'package.json');
+  const pkg = JSON.parse(await readFile(pkgPath, 'utf8')) as { version: string };
+  return pkg.version;
+}
+
 export async function startServer(): Promise<void> {
   const config = loadConfig();
   const gateway = await buildGateway(config);
+  const version = await loadPackageVersion();
 
   const server = new McpServer({
     name: 'thebuyside-agent',
-    version: '0.0.1',
+    version,
   });
 
   registerDiscover(server, gateway);

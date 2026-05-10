@@ -23,31 +23,27 @@ The agent never sees the 402, never sees a wallet, never holds a private key.
 
 ## Quickstart
 
-```bash
-git clone https://github.com/your-handle/thebuyside-agent.git
-cd thebuyside-agent
-pnpm install
-cp .env.example .env
-```
+Two steps. You need Node 20+ and a Base-mainnet wallet funded with at least `$0.01 USDC`.
 
-Then edit `.env`:
-
-- Paste a Base-mainnet wallet's 0x-prefixed private key into `X402_PAYER_PRIVATE_KEY`. Use a fresh wallet, not your main one.
-- Fund that wallet with at least `$0.01 USDC` on Base mainnet.
-
-Then register the gateway with your MCP client (one of):
-
-### Claude Code (CLI)
-
-From the project directory:
+### 1. Set the wallet key in your environment
 
 ```bash
-claude mcp add x402-pay -- "$(pwd)/node_modules/.bin/tsx" "$(pwd)/src/index.ts"
+export X402_PAYER_PRIVATE_KEY=0x...
 ```
 
-Open a Claude Code session, type `/mcp` to verify, then ask: *"Use x402.wallet_status to show my wallet."*
+Use a fresh wallet, not your main one. (You can also pass this via your MCP client's `env` block — see below.)
 
-### Claude Desktop
+### 2. Register the gateway with your MCP client
+
+**Claude Code (CLI):**
+
+```bash
+claude mcp add x402-pay -- npx -y thebuyside-agent
+```
+
+Open a session, type `/mcp` to verify, then ask: *"Use x402.wallet_status to show my wallet."*
+
+**Claude Desktop:**
 
 See [docs/install-claude-desktop.md](docs/install-claude-desktop.md).
 
@@ -105,12 +101,30 @@ Limit values accept either decimal USDC (`0.05`) or atomic units (`50000`). See 
 
 The gateway holds the wallet, drives the 402 → sign → 200 loop, enforces spend caps, writes a receipts log. The agent stays at the MCP layer and never deals with payment plumbing.
 
-## Demos
+## Run from source
+
+For contributors and anyone who wants to hack on the gateway:
+
+```bash
+git clone https://github.com/jaysperspective/thebuyside-agent.git
+cd thebuyside-agent
+pnpm install
+cp .env.example .env   # then paste your key into X402_PAYER_PRIVATE_KEY
+```
+
+Useful scripts:
 
 - **`pnpm pay-newsep`** — standalone script that pays news-ep `$0.005` end-to-end without MCP. Useful for verifying your wallet + protocol setup.
 - **`pnpm smoke`** — spawns the MCP server in a subprocess and round-trips a few tool calls. CI-safe; no real payments.
 - **`pnpm verify-seed`** — hits each registry entry's example URL and asserts a valid 402 with the advertised price. Run nightly in CI.
 - **`pnpm test`** — the full vitest unit-test suite.
+- **`pnpm build`** — compiles to `dist/`. Used by `npm publish`.
+
+To point your MCP client at the local source instead of the published npm package:
+
+```bash
+claude mcp add x402-pay -- "$(pwd)/node_modules/.bin/tsx" "$(pwd)/src/index.ts"
+```
 
 ## Adding an API to the registry
 
