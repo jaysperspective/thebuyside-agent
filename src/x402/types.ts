@@ -30,6 +30,13 @@ export type PaymentRequirements = {
    * Critical: Base mainnet USDC's EIP-712 name is "USD Coin" (NOT "USDC").
    */
   extra: { name: string; version: string };
+  /**
+   * Per-accept extension metadata. Sellers (and indexes like CDP Bazaar) bake
+   * arbitrary metadata into v2 challenges under `extensions.*` — e.g.
+   * `extensions.bazaar.{listingId, category, name}`. Opaque to the protocol;
+   * surfaced to the user via the M5 confirm prompt.
+   */
+  extensions?: Record<string, unknown>;
 };
 
 /** Body of a 402 response. */
@@ -37,6 +44,11 @@ export type Challenge = {
   x402Version: number;
   error?: string;
   accepts: PaymentRequirements[];
+  /**
+   * Top-level challenge extensions. v2 challenges may carry metadata at the
+   * envelope level (applies to all `accepts` options) rather than per-option.
+   */
+  extensions?: Record<string, unknown>;
 };
 
 /** EIP-3009 authorization, in the wire shape (decimal strings). */

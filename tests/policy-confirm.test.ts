@@ -201,4 +201,65 @@ describe('ConfirmPolicy.ask', () => {
     if (!r.ok) expect(r.reason).toMatch(/X402_CONFIRM_STRICT=1/);
     expect(fake.elicitInput).not.toHaveBeenCalled();
   });
+
+  it('renders Bazaar metadata in the prompt when extensions.bazaar is present', async () => {
+    const { mcp, fake } = makeServer({ elicitationSupported: true });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+    await p.ask(mcp, {
+      ...askArgs,
+      extensions: {
+        bazaar: {
+          name: 'EP News',
+          category: 'news',
+          listingId: 'bz_abc123',
+        },
+      },
+    });
+    const message = fake.elicitInput.mock.calls[0]![0].message as string;
+    expect(message).toMatch(/Bazaar:/);
+    expect(message).toMatch(/EP News/);
+    expect(message).toMatch(/category: news/);
+    expect(message).toMatch(/listing: bz_abc123/);
+  });
+
+  it('falls back to a generic flat key list for unknown extension namespaces', async () => {
+    const { mcp, fake } = makeServer({ elicitationSupported: true });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+    await p.ask(mcp, {
+      ...askArgs,
+      extensions: { custom_field: 'hello', custom_count: 42 },
+    });
+    const message = fake.elicitInput.mock.calls[0]![0].message as string;
+    expect(message).toMatch(/Meta:/);
+    expect(message).toMatch(/custom_field=hello/);
+    expect(message).toMatch(/custom_count=42/);
+  });
+
+  it('does not render an extension line when extensions is undefined or empty', async () => {
+    const { mcp, fake } = makeServer({ elicitationSupported: true });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+
+    await p.ask(mcp, askArgs);
+    const m1 = fake.elicitInput.mock.calls[0]![0].message as string;
+    expect(m1).not.toMatch(/Bazaar:|Meta:/);
+
+    await p.ask(mcp, { ...askArgs, extensions: {} });
+    const m2 = fake.elicitInput.mock.calls[1]![0].message as string;
+    expect(m2).not.toMatch(/Bazaar:|Meta:/);
+  });
+
+  it('ignores nested-object values in the generic fallback (anti-spam)', async () => {
+    const { mcp, fake } = makeServer({ elicitationSupported: true });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+    await p.ask(mcp, {
+      ...askArgs,
+      extensions: {
+        nested: { huge: 'x'.repeat(10_000) },
+        ok_field: 'visible',
+      },
+    });
+    const message = fake.elicitInput.mock.calls[0]![0].message as string;
+    expect(message).toMatch(/ok_field=visible/);
+    expect(message).not.toMatch(/x{50}/);
+  });
 });

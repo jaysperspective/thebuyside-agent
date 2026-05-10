@@ -37,6 +37,13 @@ export type ConfirmAskArgs = {
   url: string;
   todaySpentAtomic: bigint;
   dailyCapAtomic: bigint;
+  /**
+   * Optional `extensions.*` metadata from the 402 challenge. When the seller
+   * (or an index like CDP Bazaar) embeds listing metadata in the challenge,
+   * we surface a short summary in the prompt so the user has a trust signal
+   * beyond the bare URL.
+   */
+  extensions?: Record<string, unknown>;
 };
 
 export class ConfirmPolicy {
@@ -151,10 +158,42 @@ function formatPrompt(args: ConfirmAskArgs): string {
       return args.url;
     }
   })();
-  return [
+  const lines = [
     `Confirm payment to ${args.host}`,
     `  Amount:   $${formatUsdcAtomic(args.amountAtomic)} USDC (Base mainnet)`,
     `  Resource: ${args.method} ${path}`,
     `  Today:    $${formatUsdcAtomic(args.todaySpentAtomic)} of $${formatUsdcAtomic(args.dailyCapAtomic)} daily cap`,
-  ].join('\n');
+  ];
+  const meta = formatExtensions(args.extensions);
+  if (meta) lines.push(meta);
+  return lines.join('\n');
+}
+
+/**
+ * Render `extensions.*` metadata for the prompt. Currently knows the
+ * `bazaar` namespace (CDP Bazaar listings); other namespaces fall through
+ * to a generic key-list. Returns null when there's nothing useful to show.
+ *
+ * Only surfaces string/number values to keep the prompt readable and
+ * resistant to nested-object spam from a hostile seller.
+ */
+function formatExtensions(extensions: Record<string, unknown> | undefined): string | null {
+  if (!extensions || Object.keys(extensions).length === 0) return null;
+
+  const bazaar = extensions.bazaar;
+  if (bazaar && typeof bazaar === 'object') {
+    const b = bazaar as Record<string, unknown>;
+    const parts: string[] = [];
+    if (typeof b.name === 'string') parts.push(b.name);
+    if (typeof b.category === 'string') parts.push(`category: ${b.category}`);
+    if (typeof b.listingId === 'string') parts.push(`listing: ${b.listingId}`);
+    if (parts.length > 0) return `  Bazaar:   ${parts.join(' • ')}`;
+  }
+
+  const flat = Object.entries(extensions)
+    .filter(([, v]) => typeof v === 'string' || typeof v === 'number')
+    .slice(0, 3)
+    .map(([k, v]) => `${k}=${v}`);
+  if (flat.length === 0) return null;
+  return `  Meta:     ${flat.join(', ')}`;
 }

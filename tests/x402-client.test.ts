@@ -519,4 +519,137 @@ describe('payAndFetch', () => {
     expect(observedAmount).toBe('5000');
     expect(observedNetwork).toBe('eip155:8453');
   });
+
+  // ---------- extensions.* metadata (Bazaar listings, etc.) ----------
+
+  it('preserves per-accept extensions through normalization', async () => {
+    const challengeWithPerAcceptExt = {
+      x402Version: 2,
+      resource: NEWSEP_V2_CHALLENGE.resource,
+      accepts: [
+        {
+          ...NEWSEP_V2_CHALLENGE.accepts[0],
+          extensions: {
+            bazaar: { listingId: 'bz_abc123', category: 'news', name: 'EP News' },
+          },
+        },
+      ],
+    };
+    const headerValue = Buffer.from(JSON.stringify(challengeWithPerAcceptExt)).toString(
+      'base64',
+    );
+    const { fetchFn } = makeMockFetch([
+      new Response('{}', {
+        status: 402,
+        headers: { 'payment-required': headerValue },
+      }),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let seenExt: Record<string, unknown> | undefined;
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        seenExt = reqs.extensions;
+      },
+    });
+
+    expect(seenExt).toEqual({
+      bazaar: { listingId: 'bz_abc123', category: 'news', name: 'EP News' },
+    });
+  });
+
+  it('merges top-level challenge extensions into the picked reqs', async () => {
+    const challengeWithTopExt = {
+      ...NEWSEP_V2_CHALLENGE,
+      extensions: { bazaar: { name: 'Top-Level Listing' }, custom: 'top' },
+    };
+    const headerValue = Buffer.from(JSON.stringify(challengeWithTopExt)).toString(
+      'base64',
+    );
+    const { fetchFn } = makeMockFetch([
+      new Response('{}', {
+        status: 402,
+        headers: { 'payment-required': headerValue },
+      }),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let seenExt: Record<string, unknown> | undefined;
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        seenExt = reqs.extensions;
+      },
+    });
+
+    expect(seenExt).toEqual({
+      bazaar: { name: 'Top-Level Listing' },
+      custom: 'top',
+    });
+  });
+
+  it('per-accept extensions take precedence over top-level on key collision', async () => {
+    const challenge = {
+      ...NEWSEP_V2_CHALLENGE,
+      extensions: { bazaar: { name: 'top' }, only_top: 't' },
+      accepts: [
+        {
+          ...NEWSEP_V2_CHALLENGE.accepts[0],
+          extensions: { bazaar: { name: 'accept' }, only_accept: 'a' },
+        },
+      ],
+    };
+    const headerValue = Buffer.from(JSON.stringify(challenge)).toString('base64');
+    const { fetchFn } = makeMockFetch([
+      new Response('{}', {
+        status: 402,
+        headers: { 'payment-required': headerValue },
+      }),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let seenExt: Record<string, unknown> | undefined;
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        seenExt = reqs.extensions;
+      },
+    });
+
+    expect(seenExt).toEqual({
+      bazaar: { name: 'accept' },
+      only_top: 't',
+      only_accept: 'a',
+    });
+  });
+
+  it('leaves extensions undefined when the challenge has none', async () => {
+    const { fetchFn } = makeMockFetch([
+      v2ChallengeResponse(),
+      new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    ]);
+
+    let seenExt: Record<string, unknown> | undefined = { sentinel: true };
+    await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+      beforePay: (reqs) => {
+        seenExt = reqs.extensions;
+      },
+    });
+
+    expect(seenExt).toBeUndefined();
+  });
 });

@@ -73,6 +73,7 @@ export function registerFetch(server: McpServer, gateway: Gateway): void {
               url,
               todaySpentAtomic: await gateway.caps.spentTodayAtomic(),
               dailyCapAtomic: gateway.caps.config.dailyLimitAtomic,
+              extensions: reqs.extensions,
             });
             if (!confirmDecision.ok) throw new Error(confirmDecision.reason);
           },

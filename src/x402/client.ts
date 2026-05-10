@@ -113,7 +113,14 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     );
   }
 
-  // 2.5) Pre-pay hook (caps, ad-hoc policies). Errors abort.
+  // 2.5) Merge top-level challenge extensions into the picked reqs so
+  //      consumers (caps, confirm prompt) see a single combined extension
+  //      bag. Per-accept extensions take precedence on key collision.
+  if (challenge.extensions || reqs.extensions) {
+    reqs.extensions = { ...(challenge.extensions ?? {}), ...(reqs.extensions ?? {}) };
+  }
+
+  // 2.6) Pre-pay hook (caps, ad-hoc policies). Errors abort.
   if (opts.beforePay) {
     await opts.beforePay(reqs);
   }
@@ -299,12 +306,14 @@ type RawAccept = {
   maxTimeoutSeconds?: number;
   asset?: Address;
   extra?: { name: string; version: string };
+  extensions?: Record<string, unknown>;
 };
 type RawChallenge = {
   x402Version?: number;
   error?: string;
   resource?: string | { url?: string; description?: string; mimeType?: string };
   accepts?: RawAccept[];
+  extensions?: Record<string, unknown>;
 };
 
 function normalizeChallenge(raw: unknown): Challenge {
@@ -323,12 +332,14 @@ function normalizeChallenge(raw: unknown): Challenge {
     maxTimeoutSeconds: a.maxTimeoutSeconds ?? 60,
     asset: (a.asset ?? '0x0000000000000000000000000000000000000000') as Address,
     extra: a.extra ?? { name: '', version: '' },
+    extensions: a.extensions,
   }));
 
   return {
     x402Version: r.x402Version ?? 1,
     error: r.error,
     accepts,
+    extensions: r.extensions,
   };
 }
 
