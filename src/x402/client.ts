@@ -53,6 +53,20 @@ export type PayAndFetchResult = {
   paidRequirements?: PaymentRequirements;
   /** Settle tx hash from `X-PAYMENT-RESPONSE`, if the server emitted it. */
   settledTx?: string;
+  /**
+   * Populated when the retry (with X-PAYMENT) returns non-200. Carries the
+   * full response headers and a decoded `payment-required` payload so the
+   * caller can surface the rejection reason. v2 facilitators put the
+   * rejection detail in headers, not the body — without this we can't
+   * tell why a payment was rejected.
+   */
+  failureDiagnostics?: FailureDiagnostics;
+};
+
+export type FailureDiagnostics = {
+  headers: Record<string, string>;
+  /** Decoded `payment-required` header (base64 JSON), if present. */
+  paymentRequired?: unknown;
 };
 
 export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetchResult> {
@@ -138,13 +152,45 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     await opts.onPaid({ reqs, tx: settledTx });
   }
 
+  // 7.75) Diagnostics on rejection — capture headers so the caller can
+  //       surface the facilitator's rejection reason.
+  let failureDiagnostics: FailureDiagnostics | undefined;
+  if (r2.status !== 200) {
+    failureDiagnostics = captureFailure(r2);
+    logger.warn('x402 retry rejected', {
+      status: r2.status,
+      host: new URL(opts.url).host,
+      headers: failureDiagnostics.headers,
+      paymentRequired: failureDiagnostics.paymentRequired,
+    });
+  }
+
   return {
     status: r2.status,
     body,
     paid: r2.status === 200,
     paidRequirements: reqs,
     settledTx,
+    failureDiagnostics,
   };
+}
+
+function captureFailure(r: Response): FailureDiagnostics {
+  const headers: Record<string, string> = {};
+  r.headers.forEach((value, key) => {
+    headers[key.toLowerCase()] = value;
+  });
+
+  let paymentRequired: unknown;
+  const pr = headers['payment-required'];
+  if (pr) {
+    try {
+      paymentRequired = JSON.parse(Buffer.from(pr, 'base64').toString('utf8'));
+    } catch {
+      // leave undefined — header was present but not decodable
+    }
+  }
+  return { headers, paymentRequired };
 }
 
 function pickRequirements(

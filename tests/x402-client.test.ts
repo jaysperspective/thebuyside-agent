@@ -378,6 +378,46 @@ describe('payAndFetch', () => {
     ).rejects.toThrow(/no `payment-required` header/);
   });
 
+  it('captures response headers and decodes payment-required on a rejected retry', async () => {
+    const updatedChallenge = {
+      ...NEWSEP_V2_CHALLENGE,
+      error: 'invalid_signature_validation',
+    };
+    const headerValue = Buffer.from(JSON.stringify(updatedChallenge)).toString(
+      'base64',
+    );
+
+    const { fetchFn } = makeMockFetch([
+      v2ChallengeResponse(),
+      new Response('{}', {
+        status: 402,
+        headers: {
+          'content-type': 'application/json',
+          'payment-required': headerValue,
+          'x-debug-error': 'EIP712_DOMAIN_MISMATCH',
+        },
+      }),
+    ]);
+
+    const result = await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+    });
+
+    expect(result.paid).toBe(false);
+    expect(result.status).toBe(402);
+    expect(result.failureDiagnostics).toBeDefined();
+    expect(result.failureDiagnostics!.headers['x-debug-error']).toBe(
+      'EIP712_DOMAIN_MISMATCH',
+    );
+    expect(result.failureDiagnostics!.paymentRequired).toMatchObject({
+      x402Version: 2,
+      error: 'invalid_signature_validation',
+    });
+  });
+
   it('beforePay sees the v2 challenge with normalized fields', async () => {
     const { fetchFn } = makeMockFetch([
       v2ChallengeResponse(),

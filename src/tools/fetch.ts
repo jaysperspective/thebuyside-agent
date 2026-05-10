@@ -91,6 +91,9 @@ export function registerFetch(server: McpServer, gateway: Gateway): void {
           out.paid_to = result.paidRequirements.payTo;
           out.tx_hash = result.settledTx ?? null;
         }
+        if (!result.paid && result.failureDiagnostics) {
+          out.failure_diagnostics = result.failureDiagnostics;
+        }
 
         return {
           content: [{ type: 'text', text: JSON.stringify(out, null, 2) }],
