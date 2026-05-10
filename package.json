@@ -14,6 +14,7 @@
     "smoke": "tsx scripts/mcp-smoke.ts",
     "test": "vitest run",
     "pay-newsep": "tsx scripts/pay-newsep.ts",
+    "verify-seed": "tsx scripts/verify-seed.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

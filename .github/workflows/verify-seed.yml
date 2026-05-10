@@ -1,0 +1,37 @@
+name: Verify seed registry
+
+# Nightly check that every entry in src/registry/seed.json is still alive
+# and returns the advertised x402 price. Failures here mean a seller has
+# removed/changed their endpoint — open an issue for the entry to be
+# updated or removed.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 06:00 UTC daily
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'src/registry/seed.json'
+      - 'src/registry/seed.candidates.json'
+      - 'scripts/verify-seed.ts'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify seed entries
+        run: pnpm verify-seed
