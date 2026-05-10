@@ -202,6 +202,40 @@ describe('ConfirmPolicy.ask', () => {
     expect(fake.elicitInput).not.toHaveBeenCalled();
   });
 
+  it('treats `-32603 task creation` from elicitInput as a capability gap → ok in non-strict', async () => {
+    const { mcp, fake } = makeServer({
+      elicitationSupported: true,
+      elicitError: new Error(
+        'MCP error -32603: Client does not support task creation (required for elicitation/create)',
+      ),
+    });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+    expect(await p.ask(mcp, askArgs)).toEqual({ ok: true });
+    expect(fake.elicitInput).toHaveBeenCalledOnce();
+  });
+
+  it('cap-gap from elicitInput → reject in strict mode', async () => {
+    const { mcp } = makeServer({
+      elicitationSupported: true,
+      elicitError: new Error('MCP error -32603: tasks/create unavailable'),
+    });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: true });
+    const r = await p.ask(mcp, askArgs);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/tasks\/create unsupported/);
+  });
+
+  it('warns once across multiple cap-gap failures (no log spam per call)', async () => {
+    const { mcp, fake } = makeServer({
+      elicitationSupported: true,
+      elicitError: new Error('Method not found: elicitation/create'),
+    });
+    const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });
+    expect(await p.ask(mcp, askArgs)).toEqual({ ok: true });
+    expect(await p.ask(mcp, askArgs)).toEqual({ ok: true });
+    expect(fake.elicitInput).toHaveBeenCalledTimes(2);
+  });
+
   it('renders Bazaar metadata in the prompt when extensions.bazaar is present', async () => {
     const { mcp, fake } = makeServer({ elicitationSupported: true });
     const p = new ConfirmPolicy({ mode: { type: 'always' }, strict: false });

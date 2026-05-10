@@ -132,6 +132,28 @@ export class ConfirmPolicy {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Some clients (notably Claude Code as of 2026-05) advertise the
+      // elicitation capability in their MCP handshake but lack the
+      // tasks/create machinery that elicitInput needs under the hood,
+      // so the call throws -32603. Treat that as a capability gap —
+      // same fallback path as a client that declared no elicitation
+      // at all (warn-and-proceed unless strict mode is set).
+      if (isCapabilityGap(msg)) {
+        if (this.config.strict) {
+          return {
+            ok: false,
+            reason: `client advertised elicitation but tasks/create unsupported: ${msg}`,
+          };
+        }
+        if (!this.warnedNoElicitation) {
+          logger.warn(
+            'client advertised elicitation but lacks tasks/create; payments will proceed without per-call confirmation (caps still enforced)',
+            { err: msg },
+          );
+          this.warnedNoElicitation = true;
+        }
+        return { ok: true };
+      }
       logger.warn('elicitation request failed', { err: msg });
       return { ok: false, reason: `confirmation failed: ${msg}` };
     }
@@ -167,6 +189,23 @@ function formatPrompt(args: ConfirmAskArgs): string {
   const meta = formatExtensions(args.extensions);
   if (meta) lines.push(meta);
   return lines.join('\n');
+}
+
+/**
+ * Detect MCP-level errors that signal "the client said it supports
+ * elicitation but actually doesn't" — `-32603` (server-internal error
+ * Claude Code returns for missing task support), `Method not found`
+ * (-32601), and a few common phrasings. Anything else is treated as a
+ * real failure (transport closed, schema rejection, etc).
+ */
+function isCapabilityGap(msg: string): boolean {
+  return (
+    /-32603/.test(msg) ||
+    /tasks?\/create/i.test(msg) ||
+    /method not found/i.test(msg) ||
+    /does not support/i.test(msg) ||
+    /not implemented/i.test(msg)
+  );
 }
 
 /**
