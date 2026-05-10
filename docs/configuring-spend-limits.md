@@ -79,23 +79,45 @@ The gateway refuses to sign if your payer wallet's derived address equals the se
 
 Before signing any payment, the gateway sends an [MCP elicitation request](https://modelcontextprotocol.io/specification/draft/client/elicitation) to your client showing the destination, amount, resource, and today's running spend. Approving signs and pays. Declining or cancelling aborts with a clear error to the agent.
 
-```bash
-X402_REQUIRE_CONFIRM=always   # default — confirm every payment
-X402_REQUIRE_CONFIRM=never    # skip confirmation (caps remain the only gate)
-X402_REQUIRE_CONFIRM=0.01     # confirm at or above $0.01 USDC; let smaller ones through silently
+```
+X402_REQUIRE_CONFIRM=always
+X402_REQUIRE_CONFIRM=never
+X402_REQUIRE_CONFIRM=0.01
 ```
 
-Numeric values accept either decimal (`0.01`) or atomic units (`10000`).
+`always` (default) confirms every payment; `never` skips confirmation entirely (caps remain the only gate); a USDC threshold like `0.01` confirms only at or above that amount. Numeric values accept either decimal (`0.01`) or atomic units (`10000`).
 
-If the MCP client doesn't declare elicitation support (older clients, some IDE plugins), the gateway proceeds without prompting and logs a one-time warning at startup. The caps still enforce the spending ceiling, so this is fail-open-but-bounded.
+### Seller trust signals in the prompt
 
-To make the unsupported-client case fail closed instead:
+When a seller bakes metadata into the 402 challenge's `extensions` field (CDP Bazaar listings do this), the gateway renders it on a dedicated line in the prompt. The `bazaar` namespace gets a structured render:
 
-```bash
+```
+Confirm payment to news-ep.com
+  Amount:   $0.005000 USDC (Base mainnet)
+  Resource: GET /api/v1/stories?market=houston&limit=5
+  Today:    $0.005000 of $1.000000 daily cap
+  Bazaar:   EP News • category: news • listing: bz_abc123
+```
+
+Other namespaces get a generic flat key=value list (max 3 entries, string/number values only — nested-object spam is dropped). This gives you a trust signal beyond the bare URL and amount.
+
+### When the client doesn't fully support elicitation
+
+Two fallback paths, both share the same warn-and-proceed-or-fail-closed switch:
+
+1. **Client never declared elicitation capability** (older clients, some IDE plugins). The gateway logs `client does not support MCP elicitation; payments will proceed without per-call confirmation (caps still enforced)` once and proceeds.
+
+2. **Client advertised elicitation but lacks `tasks/create`** under the hood — this is Claude Code's case as of 2026-05. The first call surfaces an `MCP error -32603: Client does not support task creation` from `elicitInput`; the gateway recognizes that pattern and falls through to the same one-time-warning path: `client advertised elicitation but lacks tasks/create; payments will proceed without per-call confirmation (caps still enforced)`.
+
+Both paths are fail-open-but-bounded — caps + allowlist still enforce the spending ceiling.
+
+To make either case fail closed instead:
+
+```
 X402_CONFIRM_STRICT=1
 ```
 
-In strict mode, the gateway refuses any payment when the client lacks elicitation. Recommended only if you're confident your client supports elicitation — otherwise it'll block all payments.
+In strict mode, the gateway refuses any payment when the client can't prompt — regardless of which fallback path applied. Recommended only if your client definitely supports elicitation end-to-end and you want a hard guarantee.
 
 The 30-second elicitation TTL means an unanswered prompt times out and is treated as a decline.
 

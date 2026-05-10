@@ -1,7 +1,7 @@
 {
   "name": "thebuyside-x402-agent",
   "version": "0.4.1",
-  "description": "Buyer-side x402 MCP gateway — let any agent pay any x402 API without seeing a 402 or a wallet.",
+  "description": "Buyer-side x402 MCP gateway — let any agent pay any x402 API on Base or Solana without seeing a 402 or a wallet.",
   "license": "Apache-2.0",
   "author": "Joshua Harrington",
   "type": "module",
@@ -24,6 +24,7 @@
     "agents",
     "usdc",
     "base",
+    "solana",
     "stablecoin",
     "agent-payments"
   ],

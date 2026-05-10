@@ -36,11 +36,38 @@ See [src/registry/types.ts](../src/registry/types.ts) for the canonical types. E
 
 - **`id`** — unique kebab-case. Convention: `<vendor>-<resource>-<action>`. Example: `newsep-stories-search`, `acme-weather-current`.
 - **`endpoint`** — full URL. May contain `{placeholder}` segments for path parameters (e.g. `/items/{id}`). If you use placeholders, you **must** also provide an `example` URL the verifier can hit.
-- **`price_usdc` and `price_atomic`** — must be consistent. USDC has 6 decimals, so `price_atomic = price_usdc × 1_000_000`. Both fields exist because humans read the first and programs read the second.
-- **`chain`** — short id. Currently `"base"`. Solana support arrives in a later version.
-- **`network`** — CAIP-2 form. Base mainnet is `"eip155:8453"`. Match what the server's 402 challenge actually emits.
+- **`price_usdc` and `price_atomic`** — must be consistent. USDC has 6 decimals on both Base and Solana, so `price_atomic = price_usdc × 1_000_000`. Both fields exist because humans read the first and programs read the second.
+- **`chain`** — short id. Supported values: `"base"`, `"solana"`. The gateway's `ChainAdapter` matches on the `network` field, but `chain` is what shows up in logs and receipts.
+- **`network`** — match what the server's 402 challenge actually emits.
+  - Base mainnet: `"eip155:8453"` (CAIP-2 form). Some sellers still emit the short form `"base"` — both are accepted by the EVM adapter.
+  - Solana mainnet: `"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"` (Solana genesis hash). The short form `"solana"` is also accepted.
 - **`tags`** — lowercase, no punctuation. Aim for 5-10 keywords that would appear in user prompts.
 - **`example`** — a fully-resolved URL with sample params. Used by `verify-seed` and shown to the LLM as a hint.
+
+### Solana entry example
+
+For a Solana mainnet endpoint, the seller MUST be returning a 402 with both `extra.feePayer` (a base58 facilitator pubkey) and a USDC SPL transfer requirement against mint `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`. Your entry looks the same as a Base one except for the chain/network fields:
+
+```json
+{
+  "id": "your-api-name-action",
+  "name": "Your API — short human-readable name",
+  "description": "What this endpoint does.",
+  "endpoint": "https://api.example.com/v1/things",
+  "method": "GET",
+  "price_usdc": 0.005,
+  "price_atomic": 5000,
+  "chain": "solana",
+  "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  "category": "weather",
+  "tags": ["weather", "forecast"],
+  "example": "https://api.example.com/v1/things?city=Houston",
+  "verified": true,
+  "verified_at": "2026-05-10"
+}
+```
+
+Before submitting, confirm the seller's destination ATA actually exists on-chain. A common seller-side bug: a wallet that's never received USDC has no Associated Token Account, and the facilitator's simulation rejects payments with `InstructionError:[2 InvalidAccountData]`. The seller can fix this by sending themselves any USDC amount once to auto-create the ATA.
 
 ## How to submit
 
