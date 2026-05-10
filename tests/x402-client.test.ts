@@ -85,7 +85,7 @@ function makeMockFetch(responses: Response[]): { fetchFn: typeof fetch; calls: C
 }
 
 describe('payAndFetch', () => {
-  it('handles 402 → sign → 200 round trip with correct X-PAYMENT header', async () => {
+  it('v1: handles 402 → sign → 200 round trip with X-PAYMENT header', async () => {
     const { fetchFn, calls } = makeMockFetch([
       new Response(JSON.stringify(NEWSEP_402_BODY), {
         status: 402,
@@ -110,20 +110,23 @@ describe('payAndFetch', () => {
     expect(result.body).toEqual({ ok: true, data: 'payload' });
     expect(calls).toHaveLength(2);
 
-    // First call: no X-PAYMENT header
+    // First call: no payment header at all
     const headers1 = (calls[0].init?.headers ?? {}) as Record<string, string>;
     expect(headers1['X-PAYMENT']).toBeUndefined();
+    expect(headers1['PAYMENT-SIGNATURE']).toBeUndefined();
 
-    // Second call: X-PAYMENT header is base64 JSON of the signed authorization
+    // Second call: v1 uses X-PAYMENT (NOT PAYMENT-SIGNATURE)
     const headers2 = (calls[1].init?.headers ?? {}) as Record<string, string>;
     expect(headers2['X-PAYMENT']).toBeDefined();
+    expect(headers2['PAYMENT-SIGNATURE']).toBeUndefined();
 
     const decoded = JSON.parse(
       Buffer.from(headers2['X-PAYMENT'], 'base64').toString('utf8'),
     );
     expect(decoded.x402Version).toBe(1);
-    expect(decoded.scheme).toBe('exact');
+    expect(decoded.scheme).toBe('exact'); // v1: at root, not nested
     expect(decoded.network).toBe('base');
+    expect(decoded.accepted).toBeUndefined(); // v1 has no `accepted` wrapper
     expect(decoded.payload.signature).toMatch(/^0x[0-9a-f]{130}$/);
     expect(decoded.payload.authorization.from).toBe(signer.address);
     expect(decoded.payload.authorization.to).toBe(
@@ -312,7 +315,7 @@ describe('payAndFetch', () => {
 
   // ---------- x402 v2 (header transport, observed on news-ep 2026-05-09) ----------
 
-  it('handles an x402 v2 challenge from the payment-required header', async () => {
+  it('v2: sends PAYMENT-SIGNATURE header (not X-PAYMENT) with the v2 body shape', async () => {
     const { fetchFn, calls } = makeMockFetch([
       v2ChallengeResponse(),
       new Response(JSON.stringify({ ok: true, version: 2 }), { status: 200 }),
@@ -332,17 +335,61 @@ describe('payAndFetch', () => {
     expect(result.paidRequirements?.maxAmountRequired).toBe('5000');
     expect(result.paidRequirements?.network).toBe('eip155:8453');
 
-    // X-PAYMENT header should carry x402Version: 2 (echoed from challenge)
+    // v2 uses PAYMENT-SIGNATURE; X-PAYMENT must NOT be set.
     const headers2 = (calls[1].init?.headers ?? {}) as Record<string, string>;
+    expect(headers2['PAYMENT-SIGNATURE']).toBeDefined();
+    expect(headers2['X-PAYMENT']).toBeUndefined();
+
     const decoded = JSON.parse(
-      Buffer.from(headers2['X-PAYMENT'], 'base64').toString('utf8'),
+      Buffer.from(headers2['PAYMENT-SIGNATURE'], 'base64').toString('utf8'),
     );
     expect(decoded.x402Version).toBe(2);
-    expect(decoded.scheme).toBe('exact');
-    expect(decoded.network).toBe('eip155:8453');
+
+    // v2 body: scheme/network/amount wrapped under `accepted`, top-level resource object
+    expect(decoded.scheme).toBeUndefined();
+    expect(decoded.network).toBeUndefined();
+    expect(decoded.accepted).toMatchObject({
+      scheme: 'exact',
+      network: 'eip155:8453',
+      amount: '5000',
+      asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      payTo: '0xc8CaE186fb4f382D3DD9C82cbA976C255531540C',
+      extra: { name: 'USD Coin', version: '2' },
+    });
+    expect(decoded.resource).toMatchObject({
+      url: 'https://example.test/api',
+      description: 'test resource',
+      mimeType: 'application/json',
+    });
+
+    // Inner authorization shape (EIP-3009) — unchanged from v1
+    expect(decoded.payload.signature).toMatch(/^0x[0-9a-f]{130}$/);
     expect(decoded.payload.authorization.from).toBe(signer.address);
     expect(decoded.payload.authorization.value).toBe('5000');
     expect(decoded.payload.authorization.nonce).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
+  it('v2: reads settle tx from PAYMENT-RESPONSE header', async () => {
+    const settleHeader = Buffer.from(
+      JSON.stringify({ transaction: '0xabc123' }),
+    ).toString('base64');
+
+    const { fetchFn } = makeMockFetch([
+      v2ChallengeResponse(),
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'payment-response': settleHeader },
+      }),
+    ]);
+
+    const result = await payAndFetch({
+      url: 'https://example.test/api',
+      signer: new EnvKeySigner(TEST_KEY),
+      chains: [new BaseUsdcAdapter()],
+      fetchFn,
+    });
+
+    expect(result.settledTx).toBe('0xabc123');
   });
 
   it('rejects a malformed payment-required header', async () => {

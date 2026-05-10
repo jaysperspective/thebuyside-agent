@@ -110,32 +110,60 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     host: new URL(opts.url).host,
     chain: adapter.id,
     amount: reqs.maxAmountRequired,
+    x402Version: challenge.x402Version,
   });
 
-  // 5) Encode `X-PAYMENT`.
-  const paymentPayload: PaymentPayload = {
-    x402Version: challenge.x402Version,
-    scheme: reqs.scheme,
-    network: reqs.network,
-    payload: { signature, authorization },
-  };
-  const xPayment = Buffer.from(JSON.stringify(paymentPayload)).toString('base64');
+  // 5) Encode the payment payload + pick the right request header name.
+  //    v1: X-PAYMENT, v2: PAYMENT-SIGNATURE. Body shapes also differ —
+  //    v2 wraps the chosen option under `accepted` and echoes a top-level
+  //    `resource` object. See specs/schemes/exact/scheme_exact_evm.md in
+  //    the coinbase/x402 repo.
+  const isV2 = (challenge.x402Version ?? 1) >= 2;
+  const paymentBody: unknown = isV2
+    ? {
+        x402Version: 2,
+        resource: {
+          url: reqs.resource,
+          description: reqs.description ?? '',
+          mimeType: reqs.mimeType ?? '',
+        },
+        accepted: {
+          scheme: reqs.scheme,
+          network: reqs.network,
+          amount: reqs.maxAmountRequired,
+          asset: reqs.asset,
+          payTo: reqs.payTo,
+          maxTimeoutSeconds: reqs.maxTimeoutSeconds,
+          extra: reqs.extra,
+        },
+        payload: { signature, authorization },
+      }
+    : ({
+        x402Version: 1,
+        scheme: reqs.scheme,
+        network: reqs.network,
+        payload: { signature, authorization },
+      } satisfies PaymentPayload);
+  const encodedPayment = Buffer.from(JSON.stringify(paymentBody)).toString('base64');
+  const paymentHeaderName = isV2 ? 'PAYMENT-SIGNATURE' : 'X-PAYMENT';
 
   // 6) Re-request with the payment header.
   const r2 = await fetchFn(opts.url, {
     method,
-    headers: { ...baseHeaders, 'X-PAYMENT': xPayment },
+    headers: { ...baseHeaders, [paymentHeaderName]: encodedPayment },
     body: serializedBody,
   });
 
-  // 7) Decode `X-PAYMENT-RESPONSE` (best-effort — the CDP facilitator
-  //    sometimes omits this header; we still trust the 200 status).
+  // 7) Decode the settle-tx response header (v2: PAYMENT-RESPONSE,
+  //    v1: X-PAYMENT-RESPONSE). CDP middleware sometimes omits this
+  //    even on success — we still trust the 200 status.
   let settledTx: string | undefined;
-  const xPaymentResponse = r2.headers.get('x-payment-response');
-  if (xPaymentResponse) {
+  const settleHeader =
+    r2.headers.get('payment-response') ?? r2.headers.get('x-payment-response');
+  if (settleHeader) {
     try {
       const decoded = JSON.parse(
-        Buffer.from(xPaymentResponse, 'base64').toString('utf8'),
+        Buffer.from(settleHeader, 'base64').toString('utf8'),
       );
       if (typeof decoded?.transaction === 'string') {
         settledTx = decoded.transaction;
