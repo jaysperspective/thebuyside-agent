@@ -36,6 +36,13 @@ export type RegistryEntry = {
   verified: boolean;
   /** ISO date (YYYY-MM-DD) of last successful verification. */
   verified_at: string;
+  /**
+   * Where this entry came from. `verified` for hand-curated `seed.json`,
+   * `candidate` for `seed.candidates.json`, or an external-source id for
+   * federated entries. Surfaced in `x402.discover` results so the agent
+   * (and the user) can weigh trust accordingly.
+   */
+  source?: 'verified' | 'candidate' | 'cdp-bazaar' | 'agentic-market' | 'x402watch';
 };
 
 export type RegistryFile = {

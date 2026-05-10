@@ -13,6 +13,7 @@ import { Allowlist } from './policy/allowlist.js';
 import { CapPolicy } from './policy/caps.js';
 import { ConfirmPolicy } from './policy/confirm.js';
 import { Receipts } from './policy/receipts.js';
+import { Federation } from './registry/federation.js';
 import { Registry } from './registry/lookup.js';
 import { EnvKeySigner } from './signer/env-key.js';
 import type { Signer } from './signer/signer.js';
@@ -25,6 +26,7 @@ export type Gateway = {
   caps: CapPolicy;
   confirm: ConfirmPolicy;
   registry: Registry;
+  federation: Federation;
 };
 
 export async function buildGateway(config: Config): Promise<Gateway> {
@@ -39,5 +41,6 @@ export async function buildGateway(config: Config): Promise<Gateway> {
     caps: CapPolicy.fromEnv(receipts),
     confirm: ConfirmPolicy.fromEnv(),
     registry,
+    federation: Federation.fromEnv(),
   };
 }
