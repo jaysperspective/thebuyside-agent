@@ -12,6 +12,7 @@ import type { Config } from './config.js';
 import { Allowlist } from './policy/allowlist.js';
 import { CapPolicy } from './policy/caps.js';
 import { Receipts } from './policy/receipts.js';
+import { Registry } from './registry/lookup.js';
 import { EnvKeySigner } from './signer/env-key.js';
 import type { Signer } from './signer/signer.js';
 
@@ -21,15 +22,19 @@ export type Gateway = {
   allowlist: Allowlist;
   receipts: Receipts;
   caps: CapPolicy;
+  registry: Registry;
 };
 
-export function buildGateway(config: Config): Gateway {
+export async function buildGateway(config: Config): Promise<Gateway> {
   const receipts = Receipts.fromEnv();
+  const registry = await Registry.load();
+
   return {
     signer: config.payerPrivateKey ? new EnvKeySigner(config.payerPrivateKey) : null,
     chains: [new BaseUsdcAdapter()],
-    allowlist: Allowlist.fromEnv(),
+    allowlist: Allowlist.fromEnv({ defaultHosts: registry.hosts() }),
     receipts,
     caps: CapPolicy.fromEnv(receipts),
+    registry,
   };
 }

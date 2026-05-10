@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "_note": "Watchlist of suspected x402-priced endpoints not yet verified. The verify-seed CI script tests each one; entries that return a clean 402 with parseable challenge get promoted to seed.json via PR. To suggest a candidate, add an entry here and open a PR — see docs/adding-an-api.md.",
+  "entries": []
+}

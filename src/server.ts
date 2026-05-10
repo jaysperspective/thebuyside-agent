@@ -13,7 +13,7 @@ import { registerWalletStatus } from './tools/wallet_status.js';
 
 export async function startServer(): Promise<void> {
   const config = loadConfig();
-  const gateway = buildGateway(config);
+  const gateway = await buildGateway(config);
 
   const server = new McpServer({
     name: 'thebuyside-agent',
@@ -32,6 +32,7 @@ export async function startServer(): Promise<void> {
     walletAddress: gateway.signer?.address ?? null,
     chains: gateway.chains.map((c) => c.id),
     allowedHosts: gateway.allowlist.allowedHosts,
+    registryEntries: gateway.registry.entries.length,
     tools: ['x402.discover', 'x402.fetch', 'x402.wallet_status'],
   });
 }

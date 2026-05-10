@@ -1,8 +1,9 @@
 /**
  * x402.discover — search the registry of x402-priced APIs.
  *
- * M2c: still a stub returning a hardcoded list. M3 swaps in a real
- * `registry/seed.json` lookup with filtering by query/tags.
+ * Reads from `src/registry/seed.json` via the Registry class. Lowercase
+ * substring match across name + description + tags + category, scored by
+ * count of matched query terms. Empty query returns the full list.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -10,7 +11,7 @@ import { z } from 'zod';
 import type { Gateway } from '../gateway.js';
 import { logger } from '../log.js';
 
-export function registerDiscover(server: McpServer, _gateway: Gateway): void {
+export function registerDiscover(server: McpServer, gateway: Gateway): void {
   server.registerTool(
     'x402.discover',
     {
@@ -22,25 +23,23 @@ export function registerDiscover(server: McpServer, _gateway: Gateway): void {
       inputSchema: {
         query: z
           .string()
-          .describe('Free-text search (e.g. "houston news", "weather", "stock prices")'),
+          .describe(
+            'Free-text search (e.g. "houston news", "weather", "stock prices"). ' +
+              'Empty string returns the full list.',
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Max number of matches to return (default 10).'),
       },
     },
-    async ({ query }) => {
-      logger.info('discover called', { query });
+    async ({ query, limit }) => {
+      logger.info('discover called', { query, limit });
 
-      const stubMatches = [
-        {
-          id: 'newsep-stories',
-          name: 'Executive Producer — local US news search',
-          endpoint: 'https://news-ep.com/api/v1/stories',
-          method: 'GET',
-          price_usdc: 0.005,
-          chain: 'base',
-          description:
-            'Search local news from US metro markets (DC, Houston, Dallas, etc.).',
-          example: 'GET https://news-ep.com/api/v1/stories?market=houston&limit=5',
-        },
-      ];
+      const matches = gateway.registry.search(query, { limit });
 
       return {
         content: [
@@ -49,9 +48,20 @@ export function registerDiscover(server: McpServer, _gateway: Gateway): void {
             text: JSON.stringify(
               {
                 query,
-                matches: stubMatches,
-                _stub:
-                  'M2c stub — returns the same hardcoded list regardless of query. M3 wires real registry lookup.',
+                matches: matches.map((e) => ({
+                  id: e.id,
+                  name: e.name,
+                  description: e.description,
+                  endpoint: e.endpoint,
+                  method: e.method,
+                  price_usdc: e.price_usdc,
+                  chain: e.chain,
+                  category: e.category,
+                  tags: e.tags,
+                  example: e.example,
+                  verified: e.verified,
+                })),
+                total_in_registry: gateway.registry.entries.length,
               },
               null,
               2,

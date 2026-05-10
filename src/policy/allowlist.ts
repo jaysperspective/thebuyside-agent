@@ -2,16 +2,15 @@
  * Host allowlist — the gateway only pays hosts in this set, unless the
  * caller explicitly overrides with X402_ALLOW_UNVERIFIED=1.
  *
- * v0 default is hardcoded to {news-ep.com}. M3 swaps the hardcoded list for
- * a read of `src/registry/seed.json` so the allowlist auto-tracks the
- * curated registry.
+ * The default allowlist is derived from the registry (`src/registry/seed.json`)
+ * so it auto-tracks the curated set of x402-priced APIs we ship with.
  *
  * Override via env:
  *   X402_ALLOWLIST=news-ep.com,api.example.com  (comma-separated hostnames)
  *   X402_ALLOW_UNVERIFIED=1                      (bypass — for dev/testing)
  */
 
-const DEFAULT_HOSTS = ['news-ep.com'];
+const FALLBACK_HOSTS = ['news-ep.com'];
 
 export type AllowDecision = { ok: true } | { ok: false; reason: string };
 
@@ -20,16 +19,21 @@ export class Allowlist {
   private readonly allowAny: boolean;
 
   constructor(opts: { hosts?: string[]; allowAny?: boolean } = {}) {
-    this.hosts = new Set(opts.hosts ?? DEFAULT_HOSTS);
+    const hosts = opts.hosts && opts.hosts.length > 0 ? opts.hosts : FALLBACK_HOSTS;
+    this.hosts = new Set(hosts);
     this.allowAny = opts.allowAny ?? false;
   }
 
-  static fromEnv(): Allowlist {
+  /**
+   * Build an Allowlist from environment variables, with `defaultHosts`
+   * (typically the registry's host list) used when X402_ALLOWLIST is unset.
+   */
+  static fromEnv(opts: { defaultHosts?: string[] } = {}): Allowlist {
     const fromEnv = process.env.X402_ALLOWLIST?.split(',')
       .map((s) => s.trim())
       .filter(Boolean);
     return new Allowlist({
-      hosts: fromEnv && fromEnv.length > 0 ? fromEnv : undefined,
+      hosts: fromEnv && fromEnv.length > 0 ? fromEnv : opts.defaultHosts,
       allowAny: process.env.X402_ALLOW_UNVERIFIED === '1',
     });
   }
