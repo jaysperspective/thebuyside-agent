@@ -1,16 +1,16 @@
 /**
  * x402.discover — search the registry of x402-priced APIs.
  *
- * M1 stub: returns a hardcoded list with news-ep regardless of the query.
- * M3 swaps in `registry/seed.json` lookup with real filtering by query/tags.
+ * M2c: still a stub returning a hardcoded list. M3 swaps in a real
+ * `registry/seed.json` lookup with filtering by query/tags.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { Config } from '../config.js';
+import type { Gateway } from '../gateway.js';
 import { logger } from '../log.js';
 
-export function registerDiscover(server: McpServer, _config: Config): void {
+export function registerDiscover(server: McpServer, _gateway: Gateway): void {
   server.registerTool(
     'x402.discover',
     {
@@ -51,7 +51,7 @@ export function registerDiscover(server: McpServer, _config: Config): void {
                 query,
                 matches: stubMatches,
                 _stub:
-                  'M1 stub — returns the same hardcoded list regardless of query. M3 wires real registry lookup.',
+                  'M2c stub — returns the same hardcoded list regardless of query. M3 wires real registry lookup.',
               },
               null,
               2,

@@ -1,14 +1,10 @@
 /**
- * MCP smoke test — spawns our server as a subprocess, talks to it over stdio
- * using the MCP client SDK, and verifies the three expected tools are listed
- * and that wallet_status responds.
+ * MCP smoke test — spawns our server, exercises the three tools, and asserts
+ * that the wiring (tool registration, schema validation, allowlist enforcement,
+ * wallet_status data shape) works end-to-end.
  *
- * Run: pnpm smoke
- *
- * This catches the most common MCP server bugs:
- *   - stray stdout writes (would corrupt the JSON-RPC stream)
- *   - tool registration errors
- *   - schema-level zod validation issues
+ * Does NOT make real x402 payments — that's covered by `pay-newsep` and the
+ * M2c live test from a Claude Code session. This script is safe to run in CI.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -20,11 +16,21 @@ const EXPECTED_TOOLS = [
   'x402.wallet_status',
 ] as const;
 
+type ToolContent = { type: string; text?: string };
+
+function textOf(content: unknown): string {
+  if (!Array.isArray(content)) return '';
+  return (content as ToolContent[])
+    .filter((c) => c.type === 'text' && typeof c.text === 'string')
+    .map((c) => c.text)
+    .join('\n');
+}
+
 async function main(): Promise<void> {
   const transport = new StdioClientTransport({
     command: 'tsx',
     args: ['src/index.ts'],
-    stderr: 'inherit', // surface server logs in smoke test output
+    stderr: 'inherit',
   });
 
   const client = new Client(
@@ -34,12 +40,12 @@ async function main(): Promise<void> {
 
   await client.connect(transport);
 
+  // 1) Tools list — all three present
   const { tools } = await client.listTools();
   console.log(`\n[smoke] server returned ${tools.length} tools:`);
   for (const t of tools) {
     console.log(`  - ${t.name}  —  ${t.title ?? '(no title)'}`);
   }
-
   const names = new Set(tools.map((t) => t.name));
   const missing = EXPECTED_TOOLS.filter((e) => !names.has(e));
   if (missing.length > 0) {
@@ -48,20 +54,49 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Round-trip a real tool call
+  // 2) wallet_status — verify shape
   const ws = await client.callTool({
     name: 'x402.wallet_status',
     arguments: {},
   });
-  console.log('\n[smoke] x402.wallet_status response:');
-  for (const c of ws.content as Array<{ type: string; text?: string }>) {
-    if (c.type === 'text' && c.text) {
-      console.log(c.text.replace(/^/gm, '  '));
+  const wsBody = JSON.parse(textOf(ws.content));
+  console.log('\n[smoke] x402.wallet_status returned:');
+  console.log(JSON.stringify(wsBody, null, 2).replace(/^/gm, '  '));
+  const requiredKeys = [
+    'address',
+    'spent_today_usdc',
+    'daily_limit_usdc',
+    'remaining_usdc',
+    'per_call_limit_usdc',
+    'allowlist',
+  ];
+  for (const k of requiredKeys) {
+    if (!(k in wsBody)) {
+      console.error(`\n[smoke] ✗ wallet_status missing key: ${k}`);
+      await client.close();
+      process.exit(1);
     }
   }
 
+  // 3) x402.fetch against an unallowed host — verify allowlist rejection
+  console.log('\n[smoke] testing allowlist enforcement…');
+  const denied = await client.callTool({
+    name: 'x402.fetch',
+    arguments: { url: 'https://example.com/anything' },
+  });
+  const deniedBody = JSON.parse(textOf(denied.content));
+  if (!deniedBody.error || !/not in the allowlist/i.test(deniedBody.error)) {
+    console.error(
+      '\n[smoke] ✗ expected allowlist rejection, got:',
+      JSON.stringify(deniedBody, null, 2),
+    );
+    await client.close();
+    process.exit(1);
+  }
+  console.log(`  ✓ unallowed host rejected: ${deniedBody.error.slice(0, 80)}…`);
+
   await client.close();
-  console.log('\n[smoke] ✓ all 3 expected tools registered and reachable');
+  console.log('\n[smoke] ✓ all checks passed');
 }
 
 main().catch((err: unknown) => {
