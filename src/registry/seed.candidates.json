@@ -1,5 +1,54 @@
 {
   "version": 1,
-  "_note": "Watchlist of suspected x402-priced endpoints not yet verified. The verify-seed CI script tests each one; entries that return a clean 402 with parseable challenge get promoted to seed.json via PR. To suggest a candidate, add an entry here and open a PR — see docs/adding-an-api.md.",
-  "entries": []
+  "_note": "Watchlist of x402-priced endpoints not yet promotable to seed.json. Three reasons an entry lives here: (a) verified to return 402 but on Base Sepolia testnet — needs a Sepolia chain adapter (v0 is mainnet-only). (b) suspected but not yet curl-verified. (c) verified-by-curl but not yet round-tripped with a real payment. The verify-seed CI does NOT check this file. To promote an entry: ensure the gateway supports its chain, do a real payment round-trip, then move the JSON object to seed.json with verified: true. Other leads I noted but couldn't pin down API paths for in 2026-05-09 search: x402.coinstats.app (saw 402 on /coins), api.actiongate.xyz, walletiq-zeta.vercel.app, augurrisk.com, myceliasignal.com, diamondclaws.io. PRs welcome.",
+  "entries": [
+    {
+      "id": "gitgazette-article",
+      "name": "Git Gazette — repository article",
+      "description": "AI-generated article about a GitHub/GitLab repository (history, contributors, code-quality assessment, etc.).",
+      "endpoint": "https://gitgazette.com/api/x402/article",
+      "method": "POST",
+      "price_usdc": 0.02,
+      "price_atomic": 20000,
+      "chain": "base-sepolia",
+      "network": "eip155:84532",
+      "category": "github",
+      "tags": ["github", "gitlab", "repos", "ai", "article", "writeup", "sepolia"],
+      "example": "https://gitgazette.com/api/x402/article",
+      "verified": false,
+      "verified_at": "2026-05-10"
+    },
+    {
+      "id": "gitgazette-compare",
+      "name": "Git Gazette — repo compare",
+      "description": "Side-by-side comparison of two GitHub repositories with metrics and analysis.",
+      "endpoint": "https://gitgazette.com/api/x402/compare",
+      "method": "POST",
+      "price_usdc": 0.02,
+      "price_atomic": 20000,
+      "chain": "base-sepolia",
+      "network": "eip155:84532",
+      "category": "github",
+      "tags": ["github", "repos", "compare", "ai", "sepolia"],
+      "example": "https://gitgazette.com/api/x402/compare",
+      "verified": false,
+      "verified_at": "2026-05-10"
+    },
+    {
+      "id": "gitgazette-alternatives",
+      "name": "Git Gazette — repo alternatives",
+      "description": "3-5 verified alternative GitHub repositories in the same category as a given repo.",
+      "endpoint": "https://gitgazette.com/api/x402/alternatives",
+      "method": "POST",
+      "price_usdc": 0.02,
+      "price_atomic": 20000,
+      "chain": "base-sepolia",
+      "network": "eip155:84532",
+      "category": "github",
+      "tags": ["github", "repos", "alternatives", "ai", "discovery", "sepolia"],
+      "example": "https://gitgazette.com/api/x402/alternatives",
+      "verified": false,
+      "verified_at": "2026-05-10"
+    }
+  ]
 }

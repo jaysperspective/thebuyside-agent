@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_note": "Curated registry of x402-priced APIs verified to return a valid 402 challenge. To add an entry, see docs/adding-an-api.md and submit a PR. The verify-seed CI job re-verifies every entry nightly.",
+  "_note": "Curated registry of x402-priced APIs verified to return a valid 402 challenge with the advertised price on Base mainnet. CI runs verify-seed nightly to flag broken entries. To add an entry, see docs/adding-an-api.md and submit a PR. Testnet (Base Sepolia) entries live in seed.candidates.json until a Sepolia chain adapter ships.",
   "entries": [
     {
       "id": "newsep-stories-search",
@@ -31,6 +31,22 @@
       "category": "news",
       "tags": ["news", "story", "detail", "article"],
       "example": "https://news-ep.com/api/v1/stories/78042",
+      "verified": true,
+      "verified_at": "2026-05-10"
+    },
+    {
+      "id": "x402index-list-all",
+      "name": "x402 Index — list all registered products",
+      "description": "Directory of x402 protocol-implementing products that sellers have submitted to the x402 Index. Useful as a meta-discovery source — the registry of registries.",
+      "endpoint": "https://www.x402index.com/api/all",
+      "method": "GET",
+      "price_usdc": 0.01,
+      "price_atomic": 10000,
+      "chain": "base",
+      "network": "base",
+      "category": "directory",
+      "tags": ["directory", "registry", "discovery", "x402", "list", "marketplace", "agents"],
+      "example": "https://www.x402index.com/api/all",
       "verified": true,
       "verified_at": "2026-05-10"
     }
