@@ -1,105 +1,131 @@
 # thebuyside-agent
 
-> MCP gateway for x402-priced APIs — buyer-side reference implementation.
+The MCP gateway that lets any AI agent discover and pay x402-priced APIs — without the user wiring payments themselves.
 
-## What this is
+`thebuyside-agent` is the canonical buyer-side reference implementation for [x402](https://x402.org), the HTTP 402 payment standard stewarded by the Linux Foundation. Drop it into Claude Code, Claude Desktop, Cursor, or any MCP client, and your agent gains three tools:
 
-`thebuyside-agent` is the [Model Context Protocol](https://modelcontextprotocol.io) (MCP) gateway that any MCP client — Claude Desktop, Cursor, IDE-based agents — can install to **discover and pay for x402-priced APIs** without the user wiring payments themselves.
+- **`x402.discover`** — search a curated registry of x402-priced APIs
+- **`x402.fetch`** — call one (the gateway pays the 402 challenge automatically)
+- **`x402.wallet_status`** — show the gateway's wallet, today's spend, and caps
 
-It is intentionally narrow:
+The agent never sees the 402, never sees a wallet, never holds a private key.
 
-- **Gateway only.** No agent framework, no LLM router, no marketplace.
-- **Base USDC at v0.** Solana / Pay.sh follow as a chain-adapter plug-in.
-- **BYO wallet key.** The gateway reads a private key from a local `.env` file and signs payments with [viem](https://viem.sh/). A managed-wallet (KMS) path will land later for a hosted version.
-- **Apache 2.0**, no CLA — just DCO sign-off on contributions.
+## Status
 
-The goal is to be the canonical reference implementation that closes the buyer-side gap in the x402 ecosystem.
+**v0 shipped 2026-05-10.** First end-to-end paid call from Claude Code:
 
-## Status: 🚧 v0 in progress
+> `$0.005 USDC` settled on Base mainnet — tx [`0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac`](https://basescan.org/tx/0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac)
 
-| Milestone | What it proves | Status |
-| --- | --- | --- |
-| **M0** | Standalone script pays news-ep $0.005 USDC end-to-end. | ✅ |
-| **M1** | MCP server with 3 stub tools shows up in Claude Desktop / Code. | ✅ |
-| **M2** | M1 + M0 wired together. End-to-end paid call from Claude. | ⏳ |
-| **M3** | Wallet status, seed list, install docs, CI verify. | ⏳ |
+- 47 unit tests + MCP smoke test, all green
+- x402 v1 + v2 dual wire support (handles both transports)
+- Spend caps, host allowlist, receipts log, self-transfer guard
+- Apache 2.0, DCO not CLA
 
 ## Quickstart
 
-### Prerequisites
-
-- Node ≥20, pnpm ≥10
-- (For M0 / M2 only) a Base-mainnet self-custody wallet with a few cents of USDC
-
-### Install
-
 ```bash
+git clone https://github.com/your-handle/thebuyside-agent.git
+cd thebuyside-agent
 pnpm install
 cp .env.example .env
-pnpm typecheck
-pnpm smoke
 ```
 
-After `cp .env.example .env`, edit `.env` and paste your wallet key into `X402_PAYER_PRIVATE_KEY` (optional at M1; required for M0/M2 live tests). `pnpm typecheck` runs the static check; `pnpm smoke` boots the MCP server, lists tools, and round-trips a call.
+Then edit `.env`:
 
-Expected smoke output:
+- Paste a Base-mainnet wallet's 0x-prefixed private key into `X402_PAYER_PRIVATE_KEY`. Use a fresh wallet, not your main one.
+- Fund that wallet with at least `$0.01 USDC` on Base mainnet.
 
-```
-[smoke] server returned 3 tools:
-  - x402.discover  —  Discover x402-priced APIs
-  - x402.fetch     —  Fetch an x402-priced URL (paying if required)
-  - x402.wallet_status  —  Wallet status
-[smoke] ✓ all 3 expected tools registered and reachable
-```
+Then register the gateway with your MCP client (one of):
 
-## M0 — pay news-ep manually (standalone)
+### Claude Code (CLI)
 
-`scripts/pay-newsep.ts` drives the full x402 v1 loop end-to-end against [news-ep.com](https://news-ep.com): `GET` → `402` → EIP-3009 signed payment → `200`. No MCP. Settlement happens on Base mainnet via the Coinbase CDP facilitator.
-
-```bash
-pnpm pay-newsep
-```
-
-The settlement transaction will appear on [basescan.org](https://basescan.org) under the receiving wallet (`0xc8CaE186fb4f382D3DD9C82cbA976C255531540C`).
-
-## M1 — install in an MCP client
-
-The gateway speaks MCP over stdio. Register it with your client and the three tools — `x402.discover`, `x402.fetch`, `x402.wallet_status` — appear in the model's tool picker.
-
-> At M1 the tools are stubs: `discover` returns a hardcoded list, `fetch` returns a canned response, `wallet_status` shows your real wallet address but zero spend. Real payments land in M2.
-
-### Option A — Claude Code (CLI)
-
-From the project directory, run this single line:
+From the project directory:
 
 ```bash
 claude mcp add x402-pay -- "$(pwd)/node_modules/.bin/tsx" "$(pwd)/src/index.ts"
 ```
 
-Then start a Claude Code session (`claude`), type `/mcp` to verify `x402-pay` shows as connected with 3 tools, and ask Claude to use the `x402.wallet_status` tool.
+Open a Claude Code session, type `/mcp` to verify, then ask: *"Use x402.wallet_status to show my wallet."*
 
-> **Note:** local stdio MCP servers like this one only work with **local** MCP clients (Claude Code CLI, Claude Desktop). They are *not* reachable from claude.ai's web "Code" mode, which runs in Anthropic's cloud and can only see hosted tools.
+### Claude Desktop
 
-### Option B — Claude Desktop (`claude_desktop_config.json`)
+See [docs/install-claude-desktop.md](docs/install-claude-desktop.md).
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) and add:
+> Local stdio MCP servers can only be reached by **local** MCP clients (Claude Code CLI, Claude Desktop). The claude.ai web app's "Code" mode runs in Anthropic's cloud and can't reach a server on your laptop.
 
-```json
-{
-  "mcpServers": {
-    "x402-pay": {
-      "command": "/ABSOLUTE/PATH/TO/thebuyside-agent/node_modules/.bin/tsx",
-      "args": ["/ABSOLUTE/PATH/TO/thebuyside-agent/src/index.ts"]
-    }
-  }
-}
+## Try it
+
+Once connected, ask the model:
+
+> *"Use x402.discover to find APIs about news."*
+
+> *"Use x402.fetch to get https://news-ep.com/api/v1/stories?market=houston&limit=5"*
+
+The first returns the registry. The second pays `$0.005 USDC` and returns Houston news.
+
+After a successful call, ask `x402.wallet_status` and you'll see today's spend reflected.
+
+## Configuration
+
+Spend controls have safe defaults. Override via env if needed.
+
+| Var | Default | What it does |
+| --- | --- | --- |
+| `X402_PAYER_PRIVATE_KEY` | *(required for payment)* | Base-mainnet wallet key (0x-prefixed) |
+| `X402_DAILY_LIMIT` | `1.00` | Max USDC spent per rolling 24h window |
+| `X402_PER_CALL_LIMIT` | `0.05` | Max USDC per single call |
+| `X402_ALLOWLIST` | hosts in `seed.json` | Comma-separated extra allowed hostnames |
+| `X402_ALLOW_UNVERIFIED` | *(off)* | `1` allows any host — dev only |
+| `X402_RECEIPTS_PATH` | `.local/receipts.jsonl` | Where the receipts log is written |
+| `X402_TEST_URL` | news-ep stories | Override target for `pnpm pay-newsep` |
+
+Limit values accept either decimal USDC (`0.05`) or atomic units (`50000`). See [docs/configuring-spend-limits.md](docs/configuring-spend-limits.md) for the full guide.
+
+## How it works
+
+```
+   Claude Code / Claude Desktop / Cursor
+                  │
+                  │  MCP over stdio
+                  │
+            ┌─────▼─────┐
+            │  Gateway  │   ← src/server.ts (this repo)
+            └─────┬─────┘
+                  │
+                  │  HTTPS GET → 402 challenge → EIP-3009 sign
+                  │             → retry with PAYMENT-SIGNATURE
+                  │             → 200 + body
+                  │
+            ┌─────▼──────┐         ┌──────────────────┐
+            │ x402 server│ ──────→ │ CDP facilitator  │ ─→ Base USDC settle
+            │ (e.g.      │         │ (verify + submit │
+            │  news-ep)  │ ←────── │  tx)             │
+            └────────────┘         └──────────────────┘
 ```
 
-Replace `/ABSOLUTE/PATH/TO/` with your actual path (run `pwd` in the project directory). Restart Claude Desktop. The three tools should appear in the tool picker.
+The gateway holds the wallet, drives the 402 → sign → 200 loop, enforces spend caps, writes a receipts log. The agent stays at the MCP layer and never deals with payment plumbing.
 
-### Verify
+## Demos
 
-After registration, ask the model: *"Use x402.wallet_status to show my wallet."* You should get back the JSON with your wallet address (or a `(no wallet configured)` placeholder if you haven't set the private key yet).
+- **`pnpm pay-newsep`** — standalone script that pays news-ep `$0.005` end-to-end without MCP. Useful for verifying your wallet + protocol setup.
+- **`pnpm smoke`** — spawns the MCP server in a subprocess and round-trips a few tool calls. CI-safe; no real payments.
+- **`pnpm verify-seed`** — hits each registry entry's example URL and asserts a valid 402 with the advertised price. Run nightly in CI.
+- **`pnpm test`** — the full vitest unit-test suite.
+
+## Adding an API to the registry
+
+The discover tool reads `src/registry/seed.json`. Adding a new x402-priced endpoint is a single PR — see [docs/adding-an-api.md](docs/adding-an-api.md). CI verifies the entry returns a clean 402 with your advertised price before merge.
+
+## What this is *not*
+
+- An agent framework. Bring your own.
+- An LLM router. Bring your own.
+- A marketplace. The registry is curated open-source data, not a vendor list.
+- A custodial wallet service. Keys live in your `.env`. A managed-wallet (KMS) seam exists for a future hosted version, but the OSS gateway will always work BYO-key.
+
+## Contributing
+
+Apache 2.0. Sign your commits with DCO (`git commit -s`). No CLA. PRs welcome — small, focused, with tests.
 
 ## License
 
