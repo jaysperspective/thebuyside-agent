@@ -369,6 +369,37 @@ describe('payAndFetch', () => {
     expect(decoded.payload.authorization.nonce).toMatch(/^0x[0-9a-f]{64}$/);
   });
 
+  it('refuses to sign when payer wallet equals the seller payTo (self-transfer guard)', async () => {
+    // Construct a challenge whose payTo is the address derived from TEST_KEY,
+    // simulating the wallet-reuse misconfig (buyer key == seller receiving wallet).
+    const signer = new EnvKeySigner(TEST_KEY);
+    const selfTransferChallenge = {
+      x402Version: 1,
+      accepts: [
+        {
+          ...NEWSEP_402_BODY.accepts[0],
+          payTo: signer.address, // intentionally identical to payer
+        },
+      ],
+    };
+
+    const { fetchFn, calls } = makeMockFetch([
+      new Response(JSON.stringify(selfTransferChallenge), { status: 402 }),
+    ]);
+
+    await expect(
+      payAndFetch({
+        url: 'https://example.test/api',
+        signer,
+        chains: [new BaseUsdcAdapter()],
+        fetchFn,
+      }),
+    ).rejects.toThrow(/cannot pay yourself/);
+
+    // Only the initial 402 fetch happened — no signing, no retry.
+    expect(calls).toHaveLength(1);
+  });
+
   it('v2: reads settle tx from PAYMENT-RESPONSE header', async () => {
     const settleHeader = Buffer.from(
       JSON.stringify({ transaction: '0xabc123' }),

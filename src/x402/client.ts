@@ -97,6 +97,22 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
   }
   const { reqs, adapter } = picked;
 
+  // 2.4) Sanity: refuse to sign if the payer wallet IS the receiver wallet.
+  //       EIP-3009 self-transfers are nonsensical and CDP's facilitator
+  //       rejects them as `invalid_payload`. In practice this happens when
+  //       a user configures X402_PAYER_PRIVATE_KEY to a key whose derived
+  //       address equals the seller's payTo (e.g. they reused a Coinbase
+  //       receiving wallet's key as the buyer key). Catching this here
+  //       gives a clear error instead of an opaque facilitator rejection.
+  if (opts.signer.address.toLowerCase() === reqs.payTo.toLowerCase()) {
+    throw new Error(
+      `payer wallet (${opts.signer.address}) is the same as the seller's ` +
+        `payTo address — you cannot pay yourself. Configure a different ` +
+        `X402_PAYER_PRIVATE_KEY (a wallet you control that is NOT the ` +
+        `seller's receiving wallet).`,
+    );
+  }
+
   // 2.5) Pre-pay hook (caps, ad-hoc policies). Errors abort.
   if (opts.beforePay) {
     await opts.beforePay(reqs);
