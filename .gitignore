@@ -11,7 +11,8 @@ dist/
 *.key
 *.pem
 
-# local data (receipts SQLite, etc.)
+# local data (receipts log, future SQLite, etc.)
+.local/
 *.db
 *.db-journal
 *.db-shm
