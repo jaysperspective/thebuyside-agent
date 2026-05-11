@@ -1,28 +1,33 @@
 # thebuyside-x402-agent
 
-The MCP gateway that lets any AI agent discover and pay x402-priced APIs on Base or Solana — without the user wiring payments themselves.
+The MCP gateway that lets any AI agent discover and pay metered APIs on Base or Solana — without the user wiring payments themselves.
 
-`thebuyside-x402-agent` is the canonical buyer-side reference implementation for [x402](https://x402.org), the HTTP 402 payment standard stewarded by the Linux Foundation. Drop it into Claude Code, Claude Desktop, Cursor, or any MCP client, and your agent gains three tools:
+`thebuyside-x402-agent` is the canonical buyer-side reference implementation for two open agent-payment protocols:
 
-- **`x402.discover`** — search the curated registry plus three federated indexes (CDP Bazaar, agentic.market, x402watch) for x402-priced APIs
-- **`x402.fetch`** — call one (the gateway pays the 402 challenge automatically, on whichever chain you have a key for)
-- **`x402.wallet_status`** — show the gateway's wallet(s), today's spend, and caps
+- **[x402](https://x402.org)** — the HTTP 402 payment standard stewarded by the Linux Foundation. EVM (Base) and SVM (Solana) via the `exact` scheme.
+- **MPP** — [Machine Payments Protocol](https://paymentauth.org/draft-solana-charge-00.html), the new RFC-7235-style protocol behind [pay.sh](https://pay.sh) (Solana Foundation × Google Cloud, launched May 2026). Solana mainnet USDC.
+
+Drop it into Claude Code, Claude Desktop, Cursor, or any MCP client, and your agent gains three tools:
+
+- **`pay.discover`** — search the curated registry plus three federated indexes (CDP Bazaar, agentic.market, x402watch) for paid APIs
+- **`pay.fetch`** — call one (the gateway pays the 402 challenge automatically, on whichever chain you have a key for, speaking whichever protocol the seller uses)
+- **`pay.wallet_status`** — show the gateway's wallet(s), today's spend, and caps
 
 The agent never sees the 402, never sees a wallet, never holds a private key.
 
 ## Status
 
-**v0.4.1 published to npm 2026-05-10.** Validated end-to-end on both supported chains:
+**v0.5.0 — MPP support landed 2026-05-10.** Previously validated end-to-end on both supported chains via x402:
 
 > Base mainnet · `$0.005 USDC` · tx [`0xd0917b35…`](https://basescan.org/tx/0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac)
 >
 > Solana mainnet · `$0.005 USDC` · tx [`4DYWUMEx…`](https://solscan.io/tx/4DYWUMExSrMNxYLjUuH9G8feN4fmYXm4ToCx7gGaAEjJRf2QNrE8LsvoFSGhXwQJrchhgrnGpUFwjxrci9PRLF71)
 
-- 122 unit tests + MCP smoke test, all green
-- x402 v1 + v2 dual wire support (handles both transports)
+- 154 unit tests + MCP smoke test, all green
+- **Dual-protocol**: speaks x402 v1 + v2 *and* MPP (`solana`/`charge` intent). `pay.fetch` peeks at the 402 and dispatches transparently — agents never know which protocol the seller uses.
 - Multi-chain: configure either Base (EVM/EIP-3009) or Solana (SVM/SPL-TransferChecked) — or both. Sellers offering multiple chains are routed to whichever you have a signer for. On Solana, the seller's facilitator covers SOL gas — buyer wallet only needs USDC.
-- Federated discovery: `x402.discover` queries the curated `seed.json` + CDP Bazaar + agentic.market + x402watch in parallel and dedupes by canonical endpoint URL
-- Spend caps, host allowlist, receipts log, self-transfer guard
+- Federated discovery: `pay.discover` queries the curated `seed.json` + CDP Bazaar + agentic.market + x402watch in parallel and dedupes by canonical endpoint URL
+- Spend caps, host allowlist, receipts log, self-transfer guard — protocol-agnostic
 - Confirm-before-pay via MCP elicitation, with graceful fallback for clients lacking task-creation support (Claude Code)
 - Apache 2.0, DCO not CLA
 
@@ -60,7 +65,7 @@ Use a fresh wallet, not your main one. (You can also pass these via your MCP cli
 claude mcp add x402-pay -- npx -y thebuyside-x402-agent
 ```
 
-Open a session, type `/mcp` to verify, then ask: *"Use x402.wallet_status to show my wallet."*
+Open a session, type `/mcp` to verify, then ask: *"Use pay.wallet_status to show my wallet."*
 
 **Claude Desktop:**
 
@@ -72,13 +77,13 @@ See [docs/install-claude-desktop.md](docs/install-claude-desktop.md).
 
 Once connected, ask the model:
 
-> *"Use x402.discover to find APIs about news."*
+> *"Use pay.discover to find APIs about news."*
 
-> *"Use x402.fetch to get https://news-ep.com/api/v1/stories?market=houston&limit=5"*
+> *"Use pay.fetch to get https://news-ep.com/api/v1/stories?market=houston&limit=5"*
 
 The first returns the registry plus federated matches from CDP Bazaar, agentic.market, and x402watch (each result tagged with its `source`). The second pays `$0.005 USDC` and returns Houston news. news-ep advertises both Base and Solana — the gateway picks whichever chain you have a key for.
 
-After a successful call, ask `x402.wallet_status` and you'll see today's spend reflected (and which chains have signers configured).
+After a successful call, ask `pay.wallet_status` and you'll see today's spend reflected (and which chains have signers configured).
 
 ## Configuration
 
@@ -104,7 +109,7 @@ Spend controls have safe defaults. Override via env if needed.
 | `X402_CONFIRM_STRICT` | *(off)* | `1` refuses payment when the client lacks elicitation OR advertises elicitation but lacks tasks/create (e.g. Claude Code as of 2026-05). Default: log a one-time warning and proceed |
 | `X402_RECEIPTS_PATH` | `.local/receipts.jsonl` | Where the receipts log is written |
 
-**Federated discovery** (`x402.discover` queries these in parallel and merges with the local `seed.json`):
+**Federated discovery** (`pay.discover` queries these in parallel and merges with the local `seed.json`):
 
 | Var | Default | What it does |
 | --- | --- | --- |

@@ -49,6 +49,23 @@
       "example": "https://gitgazette.com/api/x402/alternatives",
       "verified": false,
       "verified_at": "2026-05-10"
+    },
+    {
+      "id": "paysh-debugger-mpp",
+      "name": "Pay.sh Debugger — MPP stock quote (sandbox)",
+      "description": "Solana Foundation × Google Cloud's MPP-protocol debugger. Returns a real 402 with a WWW-Authenticate Payment challenge on Solana localnet (Surfpool sandbox) — useful for shaping/validating an MPP client. Not a real paid endpoint; cannot settle on mainnet.",
+      "endpoint": "https://debugger.pay.sh/mpp/quote/AAPL",
+      "method": "GET",
+      "price_usdc": 0.01,
+      "price_atomic": 10000,
+      "chain": "solana",
+      "network": "localnet",
+      "protocol": "mpp",
+      "category": "sandbox",
+      "tags": ["paysh", "mpp", "debugger", "sandbox", "test", "solana", "surfpool"],
+      "example": "https://debugger.pay.sh/mpp/quote/AAPL",
+      "verified": false,
+      "verified_at": "2026-05-10"
     }
   ]
 }

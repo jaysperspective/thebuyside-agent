@@ -11,9 +11,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const EXPECTED_TOOLS = [
-  'x402.discover',
-  'x402.fetch',
-  'x402.wallet_status',
+  'pay.discover',
+  'pay.fetch',
+  'pay.wallet_status',
 ] as const;
 
 type ToolContent = { type: string; text?: string };
@@ -56,11 +56,11 @@ async function main(): Promise<void> {
 
   // 2) wallet_status — verify shape
   const ws = await client.callTool({
-    name: 'x402.wallet_status',
+    name: 'pay.wallet_status',
     arguments: {},
   });
   const wsBody = JSON.parse(textOf(ws.content));
-  console.log('\n[smoke] x402.wallet_status returned:');
+  console.log('\n[smoke] pay.wallet_status returned:');
   console.log(JSON.stringify(wsBody, null, 2).replace(/^/gm, '  '));
   const requiredKeys = [
     'address',
@@ -78,10 +78,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // 3) x402.fetch against an unallowed host — verify allowlist rejection
+  // 3) pay.fetch against an unallowed host — verify allowlist rejection
   console.log('\n[smoke] testing allowlist enforcement…');
   const denied = await client.callTool({
-    name: 'x402.fetch',
+    name: 'pay.fetch',
     arguments: { url: 'https://example.com/anything' },
   });
   const deniedBody = JSON.parse(textOf(denied.content));

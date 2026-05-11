@@ -1,7 +1,7 @@
 {
   "name": "thebuyside-x402-agent",
-  "version": "0.4.2",
-  "description": "Buyer-side x402 MCP gateway — let any agent pay any x402 API on Base or Solana without seeing a 402 or a wallet.",
+  "version": "0.5.0",
+  "description": "Buyer-side MCP gateway for x402 and MPP (pay.sh) — let any agent pay any metered API on Base or Solana without seeing a 402 or a wallet.",
   "license": "Apache-2.0",
   "author": "Joshua Harrington",
   "type": "module",
@@ -18,6 +18,8 @@
   ],
   "keywords": [
     "x402",
+    "mpp",
+    "pay.sh",
     "mcp",
     "model-context-protocol",
     "crypto-payments",
@@ -46,6 +48,7 @@
     "test": "vitest run",
     "pay-newsep": "tsx scripts/pay-newsep.ts",
     "pay-solana": "tsx scripts/pay-solana.ts",
+    "pay-mpp": "tsx scripts/pay-mpp.ts",
     "verify-seed": "tsx scripts/verify-seed.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",

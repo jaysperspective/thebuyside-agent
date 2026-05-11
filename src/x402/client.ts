@@ -35,6 +35,13 @@ export type PayAndFetchOptions = {
   /** Test-only: override the global `fetch`. */
   fetchFn?: typeof fetch;
   /**
+   * Optimization: the caller already fetched the initial response (typically
+   * because it peeked at the 402 headers to dispatch between x402 and MPP).
+   * Skips the duplicate GET. Must be a 402; non-402 prefetched responses
+   * are returned as-is.
+   */
+  prefetchedResponse?: Response;
+  /**
    * Called after parsing the 402 challenge, before signing. Throw to abort.
    * The thrown error propagates to the caller — no signature is generated,
    * no funds are moved. Used by the gateway to enforce spend caps.
@@ -85,8 +92,11 @@ export async function payAndFetch(opts: PayAndFetchOptions): Promise<PayAndFetch
     baseHeaders['content-type'] = 'application/json';
   }
 
-  // 1) Initial request.
-  const r1 = await fetchFn(opts.url, { method, headers: baseHeaders, body: serializedBody });
+  // 1) Initial request. Reuse the caller-prefetched response when present
+  //    (the unified pay.fetch tool does the first GET to detect MPP vs x402).
+  const r1 =
+    opts.prefetchedResponse ??
+    (await fetchFn(opts.url, { method, headers: baseHeaders, body: serializedBody }));
   if (r1.status !== 402) {
     return { status: r1.status, body: await tryJson(r1), paid: false };
   }

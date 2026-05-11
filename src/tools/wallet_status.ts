@@ -1,8 +1,9 @@
 /**
- * x402.wallet_status — return wallet address, today's spend, and configured limits.
+ * pay.wallet_status — return wallet address, today's spend, and configured limits.
  *
  * Reads spent-today from the receipts log; reads limits and allowlist from the
- * gateway's configured policy modules.
+ * gateway's configured policy modules. Protocol-agnostic — same wallet pays
+ * whether the seller speaks x402 or MPP.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -12,7 +13,7 @@ import { formatUsdcAtomic } from '../policy/format.js';
 
 export function registerWalletStatus(server: McpServer, gateway: Gateway): void {
   server.registerTool(
-    'x402.wallet_status',
+    'pay.wallet_status',
     {
       title: 'Wallet status',
       description:

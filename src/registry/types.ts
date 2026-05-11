@@ -26,6 +26,14 @@ export type RegistryEntry = {
   chain: string;
   /** CAIP-2 chain id used by x402 (e.g. "eip155:8453"). */
   network: string;
+  /**
+   * Which handshake protocol this seller speaks. `x402` (Coinbase / Linux
+   * Foundation) handles both EVM and Solana; `mpp` (paymentauth.org
+   * draft-solana-charge) is Solana-only. Defaults to `x402` if absent, since
+   * the field was added in v0.5.0 alongside MPP support — older entries
+   * predate the field and were all x402.
+   */
+  protocol?: 'x402' | 'mpp';
   /** Free-text category for grouping in the UI. */
   category: string;
   /** Lowercase keywords for query matching. Be generous. */

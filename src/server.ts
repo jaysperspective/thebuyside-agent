@@ -44,6 +44,6 @@ export async function startServer(): Promise<void> {
     chains: gateway.chains.map((c) => c.id),
     allowedHosts: gateway.allowlist.allowedHosts,
     registryEntries: gateway.registry.entries.length,
-    tools: ['x402.discover', 'x402.fetch', 'x402.wallet_status'],
+    tools: ['pay.discover', 'pay.fetch', 'pay.wallet_status'],
   });
 }

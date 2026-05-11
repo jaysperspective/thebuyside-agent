@@ -1,5 +1,5 @@
 /**
- * x402.discover — search for x402-priced APIs.
+ * pay.discover — search for paid APIs (x402 + MPP).
  *
  * Two corpora are queried in parallel:
  *   1. Local seed.json (curated, verified) via the Registry class.
@@ -9,7 +9,9 @@
  * Results are merged and deduplicated by endpoint URL — local entries win
  * on collision because they're verified. Each returned match carries a
  * `source` field so the agent can weigh trust ('verified' vs an external
- * source id). External federation can be disabled with X402_FEDERATION=off.
+ * source id) and a `protocol` field (`x402` or `mpp`) so the agent knows
+ * which handshake the seller speaks. External federation can be disabled
+ * with X402_FEDERATION=off.
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -20,16 +22,17 @@ import type { RegistryEntry } from '../registry/types.js';
 
 export function registerDiscover(server: McpServer, gateway: Gateway): void {
   server.registerTool(
-    'x402.discover',
+    'pay.discover',
     {
-      title: 'Discover x402-priced APIs',
+      title: 'Discover paid APIs (x402 + MPP)',
       description:
-        'Search the registry of x402-priced APIs by free-text query. ' +
-        'Queries the local curated registry plus external indexes (CDP ' +
-        'Bazaar, agentic.market, x402watch) when federation is enabled. ' +
-        'Each match carries a `source` field — `verified` means the entry ' +
-        'is in our curated seed; other values are external indexes that ' +
-        'have not been independently verified.',
+        'Search the registry of paid APIs by free-text query. Queries the ' +
+        'local curated registry plus external indexes (CDP Bazaar, ' +
+        'agentic.market, x402watch) when federation is enabled. Each match ' +
+        'carries a `source` field — `verified` means the entry is in our ' +
+        'curated seed; other values are external indexes that have not been ' +
+        'independently verified. The `protocol` field indicates whether the ' +
+        'seller speaks `x402` or `mpp` (Solana, paymentauth.org draft).',
       inputSchema: {
         query: z
           .string()
@@ -71,6 +74,7 @@ export function registerDiscover(server: McpServer, gateway: Gateway): void {
                   method: e.method,
                   price_usdc: e.price_usdc,
                   chain: e.chain,
+                  protocol: e.protocol ?? 'x402',
                   category: e.category,
                   tags: e.tags,
                   example: e.example,

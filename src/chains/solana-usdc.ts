@@ -42,6 +42,7 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
+import type { ChargeRequest } from '../mpp/types.js';
 import type { PaymentRequirements } from '../x402/types.js';
 import type { SolanaChainAdapter } from './adapter.js';
 
@@ -117,7 +118,8 @@ export class SolanaUsdcAdapter implements SolanaChainAdapter {
     const sourceAta = getAssociatedTokenAddressSync(mint, payer);
     const destAta = getAssociatedTokenAddressSync(mint, seller);
 
-    // Spec: feePayer MUST NOT appear in any instruction's accounts.
+    // x402 SVM scheme: feePayer MUST NOT appear in any instruction's accounts.
+    // MPP relaxes this rule — see `buildPaymentMpp` below.
     if (feePayer.equals(sourceAta) || feePayer.equals(destAta) || feePayer.equals(seller) || feePayer.equals(mint)) {
       throw new Error(
         'feePayer collides with an instruction account (source ATA, dest ATA, ' +
@@ -127,37 +129,88 @@ export class SolanaUsdcAdapter implements SolanaChainAdapter {
     }
 
     const memoText = readMemo(reqs.extra) ?? randomHexNonce(16);
-    const amount = BigInt(reqs.maxAmountRequired);
-
-    const instructions: TransactionInstruction[] = [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: COMPUTE_UNIT_PRICE }),
-      createTransferCheckedInstruction(
-        sourceAta,
-        mint,
-        destAta,
-        payer,
-        amount,
-        USDC_DECIMALS,
-        [],
-        TOKEN_PROGRAM_ID,
-      ),
-      new TransactionInstruction({
-        programId: MEMO_PROGRAM_ID,
-        keys: [],
-        data: Buffer.from(memoText, 'utf8'),
-      }),
-    ];
-
     const recentBlockhash = await this.fetchBlockhash();
-    const messageV0 = new TransactionMessage({
-      payerKey: feePayer,
-      recentBlockhash,
-      instructions,
-    }).compileToV0Message();
+    return {
+      tx: buildTransferTx({
+        payer,
+        seller,
+        feePayer,
+        mint,
+        amount: BigInt(reqs.maxAmountRequired),
+        memo: memoText,
+        recentBlockhash,
+      }),
+    };
+  }
 
-    const tx = new VersionedTransaction(messageV0);
-    return { tx };
+  /**
+   * MPP-flavored payment build. Mirrors `buildPayment` but reads the inputs
+   * from an MPP `ChargeRequest` (paymentauth.org/draft-solana-charge-00) and
+   * uses the seller-supplied `recentBlockhash` instead of fetching one.
+   *
+   * Scope: USDC mainnet, pull mode (server is feePayer), standard SPL Token
+   * program. Push mode (`feePayer: false`) is not supported here — the buyer
+   * would need its own SOL balance and gas-pricing logic.
+   */
+  async buildPaymentMpp(
+    charge: ChargeRequest,
+    payerPubkey: string,
+  ): Promise<{ tx: VersionedTransaction }> {
+    if (charge.currency !== USDC_MAINNET_MINT) {
+      throw new Error(
+        `solana-usdc adapter only handles the USDC mint (${USDC_MAINNET_MINT}); ` +
+          `MPP challenge asked for currency=${charge.currency}.`,
+      );
+    }
+    if (charge.methodDetails.tokenProgram !== TOKEN_PROGRAM_ID.toBase58()) {
+      throw new Error(
+        `MPP challenge requires non-standard token program ${charge.methodDetails.tokenProgram}; ` +
+          `only the standard SPL Token program is supported in v0.5.0.`,
+      );
+    }
+    if (charge.methodDetails.decimals !== USDC_DECIMALS) {
+      throw new Error(
+        `MPP challenge declares decimals=${charge.methodDetails.decimals}; ` +
+          `USDC requires decimals=${USDC_DECIMALS}.`,
+      );
+    }
+    if (!charge.methodDetails.feePayer) {
+      throw new Error(
+        'MPP push mode (`methodDetails.feePayer: false`) is not supported in ' +
+          'v0.5.0 — the buyer cannot be the fee payer in this gateway.',
+      );
+    }
+    if (!charge.methodDetails.feePayerKey) {
+      throw new Error(
+        'MPP pull-mode challenge missing `methodDetails.feePayerKey` — required ' +
+          'when `feePayer: true` so the buyer knows whose pubkey to record as ' +
+          'the transaction fee payer.',
+      );
+    }
+
+    const payer = new PublicKey(payerPubkey);
+    const seller = new PublicKey(charge.recipient);
+    const feePayer = new PublicKey(charge.methodDetails.feePayerKey);
+    const mint = new PublicKey(charge.currency);
+
+    if (feePayer.equals(payer)) {
+      throw new Error(
+        'seller-declared feePayer equals the buyer pubkey — refusing to sign. ' +
+          'Buyer must not appear as feePayer in pull mode.',
+      );
+    }
+
+    return {
+      tx: buildTransferTx({
+        payer,
+        seller,
+        feePayer,
+        mint,
+        amount: BigInt(charge.amount),
+        memo: null,
+        recentBlockhash: charge.methodDetails.recentBlockhash,
+      }),
+    };
   }
 
   private async fetchBlockhash(): Promise<string> {
@@ -166,6 +219,53 @@ export class SolanaUsdcAdapter implements SolanaChainAdapter {
     const { blockhash } = await conn.getLatestBlockhash('confirmed');
     return blockhash;
   }
+}
+
+/** Build the 4-instruction USDC transferChecked tx shared by x402 and MPP. */
+function buildTransferTx(args: {
+  payer: PublicKey;
+  seller: PublicKey;
+  feePayer: PublicKey;
+  mint: PublicKey;
+  amount: bigint;
+  /** Memo instruction text. `null` skips the memo (required for MPP — its verify rejects extra programs). */
+  memo: string | null;
+  recentBlockhash: string;
+}): VersionedTransaction {
+  const sourceAta = getAssociatedTokenAddressSync(args.mint, args.payer);
+  const destAta = getAssociatedTokenAddressSync(args.mint, args.seller);
+
+  const instructions: TransactionInstruction[] = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: COMPUTE_UNIT_LIMIT }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: COMPUTE_UNIT_PRICE }),
+    createTransferCheckedInstruction(
+      sourceAta,
+      args.mint,
+      destAta,
+      args.payer,
+      args.amount,
+      USDC_DECIMALS,
+      [],
+      TOKEN_PROGRAM_ID,
+    ),
+  ];
+  if (args.memo !== null) {
+    instructions.push(
+      new TransactionInstruction({
+        programId: MEMO_PROGRAM_ID,
+        keys: [],
+        data: Buffer.from(args.memo, 'utf8'),
+      }),
+    );
+  }
+
+  const messageV0 = new TransactionMessage({
+    payerKey: args.feePayer,
+    recentBlockhash: args.recentBlockhash,
+    instructions,
+  }).compileToV0Message();
+
+  return new VersionedTransaction(messageV0);
 }
 
 function readFeePayer(extra: unknown): string | null {
