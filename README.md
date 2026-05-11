@@ -17,11 +17,15 @@ The agent never sees the 402, never sees a wallet, never holds a private key.
 
 ## Status
 
-**v0.5.0 — MPP support landed 2026-05-10.** Previously validated end-to-end on both supported chains via x402:
+**v0.5.0 — first cross-implementation MPP-Solana settlement, 2026-05-11.** End-to-end live runs across all three supported protocol/chain combinations:
 
-> Base mainnet · `$0.005 USDC` · tx [`0xd0917b35…`](https://basescan.org/tx/0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac)
+> Base mainnet · x402 v2 · `$0.005 USDC` · tx [`0xd0917b35…`](https://basescan.org/tx/0xd0917b35d8b778cf8d0249cc1b107a48ff7125b9fcaf7b4b257d823f73cc6aac)
 >
-> Solana mainnet · `$0.005 USDC` · tx [`4DYWUMEx…`](https://solscan.io/tx/4DYWUMExSrMNxYLjUuH9G8feN4fmYXm4ToCx7gGaAEjJRf2QNrE8LsvoFSGhXwQJrchhgrnGpUFwjxrci9PRLF71)
+> Solana mainnet · x402 v2 · `$0.005 USDC` · tx [`4DYWUMEx…`](https://solscan.io/tx/4DYWUMExSrMNxYLjUuH9G8feN4fmYXm4ToCx7gGaAEjJRf2QNrE8LsvoFSGhXwQJrchhgrnGpUFwjxrci9PRLF71)
+>
+> Solana mainnet · MPP `solana`/`charge` · `$0.001 USDC` · tx [`3UzJ7Uz…`](https://solscan.io/tx/3UzJ7UzhyLwAAFf5Jsnf5jcW9pXUV1BzDswnuxyvNvUgJXnorS5Moozb4fdnqCyy3fwPNLk5jYkqiX8USdpDLJmG)
+
+That third settlement is, as far as we know, the first cross-implementation [Machine Payments Protocol](https://paymentauth.org/draft-solana-charge-00.html) round-trip on Solana — a JS buyer (this gateway, `@solana/web3.js`) paying a Python/FastAPI seller (news-ep.com, `solders`), with no shared code between sides. See [docs/mpp-implementer-notes.md](docs/mpp-implementer-notes.md) for the wire-format reference and the four pitfalls we hit during pair-test (RFC 7235 multi-challenge gating, strict tx instruction whitelist, `solders` v0-prefix byte gotcha, and middleware-onion ordering).
 
 - 154 unit tests + MCP smoke test, all green
 - **Dual-protocol**: speaks x402 v1 + v2 *and* MPP (`solana`/`charge` intent). `pay.fetch` peeks at the 402 and dispatches transparently — agents never know which protocol the seller uses.
@@ -172,7 +176,7 @@ Useful scripts:
 - **`pnpm pay-solana`** — same idea on Solana. Registers ONLY the Solana adapter so it routes via SVM even when the seller offers Base too. Defaults to a target that advertises Solana; override with `X402_TEST_URL`.
 - **`pnpm smoke`** — spawns the MCP server in a subprocess and round-trips a few tool calls. CI-safe; no real payments.
 - **`pnpm verify-seed`** — hits each registry entry's example URL and asserts a valid 402 with the advertised price. Run nightly in CI.
-- **`pnpm test`** — the full vitest unit-test suite (122 tests as of v0.4.1).
+- **`pnpm test`** — the full vitest unit-test suite (154 tests as of v0.5.0).
 - **`pnpm build`** — compiles to `dist/`. Used by `npm publish`.
 
 To point your MCP client at the local source instead of the published npm package:
